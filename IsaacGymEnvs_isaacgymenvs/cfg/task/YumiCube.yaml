@@ -5,7 +5,7 @@ physics_engine: physx # ${..physics_engine}
 
 # if given, will override the device setting in gym.
 env:
-  numEnvs: 64   # ${resolve_default:64,${...num_envs}}
+  numEnvs: 16   # ${resolve_default:64,${...num_envs}}
   envSpacing: 1.5
   episodeLength: 500
   enableDebugVis: False
@@ -36,11 +36,11 @@ env:
   camera:
     same: True  # 相机在所有环境中的位姿是否相同
     # 分辨率
-    width: 472
-    height: 472
+    width: 256 #472
+    height: 256  #472
 
   # set to True if you use camera sensors in the environment
-  enableCameraSensors: False
+  enableCameraSensors: True # TODO:important to set "True" if use camreas!!
 
 sim:
   dt: 0.0166 # 1/60

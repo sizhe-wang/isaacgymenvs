@@ -28,6 +28,8 @@
               ```python
               "YumiCube": YumiCube,
               ```
+3. 文件夹yumi_descriptions
+    * path:`isaacgym/assets/urdf`and`IsaacGymEnvs/assets/urdf`
 
 ### 注意事项
 

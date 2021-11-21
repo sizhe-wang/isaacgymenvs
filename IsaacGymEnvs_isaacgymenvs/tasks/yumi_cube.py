@@ -1,3 +1,23 @@
+# 添加了obeservation和action的部分
+# 添加了headless   # 需要更改“YumiCube.yaml"里的“env：enableCameraSensors”为True，需要更改vec_task.py第78行（原来的读取enableCameraSensors有bug）
+# 添加了 info_vector(包含除resnet输出外的其他全部需要作为control input的信息
+#       info_vetor(size[num_envs,13])包含state(pos(3) + rot(2) + width(1) + height(1)) + last_action(pos(3) + rot(2) + width(1))
+# 添加了control_input(size[num_envs,525])包含resnet output(512) + info vector(13)
+# 调试：
+# obsevations:
+#   【checked】images: perception_output: [num_envs, 512]
+#   last action:
+#       【checked】gripper pos: Vec3(x, y, z)
+#       【checked】gripper rot: (cos(rz), sin(rz))     or Vec3(rx, ry, rz)   rx, ry固定
+#       【checked】gripper width: float
+#   state:
+#       【checked】gripper width: float
+#       【checked】gripper height real得不到          need?
+#       【checked】gripper pos: Vec3(x, y, z)        need?
+#       【checked】gripper rot: (cos, sin) 只绕z轴    need?
+# TODO：怎么验证四元数转换到欧拉角对不对,用的是scipy.spatial.transform.Rotation，应该用"intrinsic rotations" or "extrinsic rotations"?
+# TODO：control_ik里的damping
+# TODO：rewards
 import os
 from isaacgym import gymapi
 from isaacgym import gymutil
@@ -11,12 +31,16 @@ from isaacgymenvs.tasks.myutils import compute
 from isaacgymenvs.tasks.myutils import save
 from isaacgymenvs.tasks.myutils import log
 from isaacgymenvs.tasks.myutils.print_info import printInfo
+from scipy.spatial.transform import Rotation as R
+from PIL import Image
 import yaml
 import hydra
 
 import math
 import numpy as np
 import torch
+from torchvision import datasets, transforms
+from torchvision import models
 
 
 # ========================================================
@@ -40,6 +64,7 @@ class YumiCube(VecTask):
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
         # 一些基础配置
         self.cfg = cfg
+        self.headless = headless
         # self.sim_params = sim_params
         # self.physics_engine = physics_engine
         # self.cfg["device_type"] = device_type
@@ -105,6 +130,13 @@ class YumiCube(VecTask):
         # prepare some lists
         self.envs = []
         self.cube_idxs = []
+
+        # hand rot:"intrinsic rotations" or "extrinsic rotations"
+        self.extrinsic_rotations = True
+
+        # about control_ik
+        self.damping = 0
+
         # /add ===================================================================
         super().__init__(config=self.cfg, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
         print("supper init finished")
@@ -125,7 +157,7 @@ class YumiCube(VecTask):
         # down_states = [0.5003859, -1.1831587, -0.01762783, -0.34278267, -1.38648956, 2.04657308, -0.33545228, 0.025,
         #                0.025]
         self.yumi_default_dof_pos = to_torch([0.5003859, -1.1831587, -0.01762783, -0.34278267, -1.38648956,
-                                              2.04657308, -0.33545228, 0.012, 0.012], device=self.device)
+                                              2.04657308, -0.33545228, 0.025, 0.025], device=self.device)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         # TODO：dof_state_tensor: shape (num_envs * 9(num_dofs), 2)
         # 2: 0:position, 1:velocity
@@ -166,6 +198,23 @@ class YumiCube(VecTask):
         self.yumi_dof_pos = self.dof_state[:, 0].view(self.num_envs, 9, 1)
         self.yumi_dof_vel = self.dof_state[:, 1].view(self.num_envs, 9, 1)
         print("jacobian finished")
+        # /add ===================================================================
+        # add ===================================================================
+        # image
+        self.model = models.resnet34(pretrained=True)
+        self.model = torch.nn.Sequential(*(list(self.model.children())[:-1]))
+
+        self.model.to(self.device)
+        self.model.eval()
+        self.preprocess = transforms.Compose([  # [1]
+            # transforms.Resize(472),                    #[2]
+            # transforms.CenterCrop(472),                #[3]
+            # transforms.ToTensor(),                     #[4]
+            transforms.Normalize(  # [5]
+                mean=[0.485, 0.456, 0.406],  # [6]
+                std=[0.229, 0.224, 0.225]  # [7]
+            )])
+        self.render_img = True
         # /add ===================================================================
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         print("reset finished")
@@ -254,8 +303,6 @@ class YumiCube(VecTask):
         self.yumi_dof_speed_scales[[7, 8]] = 0.1
         yumi_dof_props['effort'][7] = 200
         yumi_dof_props['effort'][8] = 200
-        print("yumi dof prop:")
-        print(yumi_dof_props)
         # [( True, -2.94, 2.94, 1, 3.14, 300., 4.e+02,  80., 0., 0.)
         # ( True, -2.5 , 0.76, 1, 3.14, 300., 4.e+02,  80., 0., 0.)
         # ( True, -2.94, 2.94, 1, 3.14, 300., 4.e+02,  80., 0., 0.)
@@ -314,8 +361,11 @@ class YumiCube(VecTask):
                                                  0, 0, 0, 0, 0, 0])
                 self.cubes.append(cube_actor)
 
-            camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat,
-                                                       self.camera_width, self.camera_height)
+            # camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat,
+            #                                            self.camera_width, self.camera_height)
+
+            camera_actor = create_assets.create_camera_attach(self.gym, env_ptr, self.camera_width, self.camera_height,
+                                                              hand_handle)
 
             self.envs.append(env_ptr)
             self.yumis.append(yumi_actor)
@@ -389,10 +439,122 @@ class YumiCube(VecTask):
         pass
 
     def compute_observations(self):
-        self.gym.refresh_actor_root_state_tensor(self.sim)
-        self.gym.refresh_dof_state_tensor(self.sim)
-        self.gym.refresh_rigid_body_state_tensor(self.sim)
-        self.gym.refresh_jacobian_tensors(self.sim)
+        # obsevations:
+        #   images: perception_output: [num_envs, 512]
+        #   last action:
+        #       gripper pos: Vec3(x, y, z)
+        #       gripper rot: (cos(rz), sin(rz))     or Vec3(rx, ry, rz)   rx, ry固定
+        #       gripper width: float
+        #   state:
+        #       gripper width: float
+        #       gripper height real得不到          ?
+        #       gripper pos: Vec3(x, y, z)        ?
+        #       gripper rot: (cos, sin) 只绕z轴    ?
+
+        # self.gym.refresh_actor_root_state_tensor(self.sim)
+        # self.gym.refresh_dof_state_tensor(self.sim)
+        # self.gym.refresh_rigid_body_state_tensor(self.sim)
+        # self.gym.refresh_jacobian_tensors(self.sim)
+
+        # self.gym.render_all_camera_sensors(self.sim)
+
+        # camera_tensor = gym.get_camera_image_gpu_tensor(sim, env, cam_handle, gymapi.IMAGE_COLOR)
+        # torch_camera_tensor = gymtorch.wrap_tensor(camera_tensor)
+        # images =====================================================================
+        if self.render_img:
+            # render the camera sensors
+            self.gym.render_all_camera_sensors(self.sim)
+            # save.save_images(gym, sim, num_envs, envs, camera_handles, "yumi_image")
+            self.gym.start_access_image_tensors(self.sim)
+            #
+            # User code to digest tensors
+            #
+            # get image tensor
+            image_tensors = []
+
+            for j in range(self.num_envs):
+                _image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], gymapi.IMAGE_COLOR)
+                # H * W * 3
+                image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
+                image_tensors.append(image_tensor)
+
+                show_image = False
+                if show_image:
+                    image_array = image_tensor.permute(1, 2, 0).cpu().numpy()
+                    image = Image.fromarray(image_array).convert("RGB")
+                    image.show()
+                    # exit()
+            self.gym.end_access_image_tensors(self.sim)
+
+            image_tensors = torch.stack(image_tensors)
+            # Normalize
+            image_tensors = image_tensors / 255.
+            image_tensors = self.preprocess(image_tensors)
+            # print("image_tensors:")
+            # print(image_tensors)
+            # print(image_tensors.shape)  # torch.Size([num_envs, 3, 256, 256])
+            self.perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()
+            # print("perception output:")
+            # print(self.perception_output)
+            # print(self.perception_output.size())    # torch.Size([num_envs, 512])
+            # exit()
+        # =============================================================================================
+        # state, gripper pos: Vec3(x, y, z)
+        # [num_envs, 3]
+        # self.rigid_body_states曾view(self.num_envs, -1, 13)，franka_cube_ik里是[num_envs * num_rigid_bodies, 13],
+        # 所以序号不一样，第0个env里hand序号10，每个env里hand序号都和第一个一样
+        self.gripper_pos = self.rigid_body_states[:, self.hand_idxs[0], :3].view(self.num_envs, 3)
+        # print(self.gripper_pos.size())  # torch.Size([16, 3])
+        # =============================================================================================
+        # state, gripper rot: Vec3(rx, ry, rz)
+        # [num_envs, 3]
+        self.gripper_rot = R.from_quat(self.rigid_body_states[:, self.hand_idxs[0], 3:7].cpu()).as_euler('xyz', degrees=False)\
+            if self.extrinsic_rotations else R.from_quat(self.rigid_body_states[:, self.hand_idxs[0], 3:7].cpu()).as_euler('XYZ', degrees=False)
+        # as_euler(): 'xyz' extrinsic rotations; 'XYZ' intrinsic rotations TODO:extrinsic or intrinsic
+        # print(self.gripper_rot.shape)   # list: (num_envs, 3)
+        # exit()
+        self.gripper_rot = torch.Tensor(self.gripper_rot).to(self.device)
+        self.gripper_rot = torch.transpose(torch.stack([torch.cos(self.gripper_rot[:, 2]), torch.sin(self.gripper_rot[:, 2])]), 0, 1)
+        # print(self.gripper_rot.size())  # torch.Size([num_envs, 2])
+        # exit()
+        # =============================================================================================
+        # state, gripper width: float (meter)
+        # [num_envs, 1]
+        self.gripper_width = self.yumi_dof_pos[:, 7, 0] + self.yumi_dof_pos[:, 8, 0]    # 两个gripper的dof都是正数[0, 0.025]
+        self.gripper_width = self.gripper_width.view(self.num_envs, 1)
+        # print(self.gripper_width)
+        # print(self.gripper_width.size())    # torch.Size([num_envs, 1])
+        # exit()
+        # =============================================================================================
+        # state, gripper height: float
+        # [num_envs, 1]
+        self.gripper_height = self.rigid_body_states[:, self.hand_idxs[0], 2]
+        self.gripper_height = self.gripper_height.view(self.num_envs, 1)
+        # print("height", self.gripper_height)
+        # print(self.gripper_height.size())   # torch.Size([num_envs, 1])
+        # exit()
+        # =============================================================================================
+        # make state_vector
+        self.state_vector = torch.cat([self.gripper_pos, self.gripper_rot, self.gripper_width, self.gripper_height], dim=-1)
+        # print(state_vector)
+        # print(state_vector.size())  # torch.Size([num_envs, 7])  # 7 = pos(3) + rot(2) + width(1) + height(1)
+        # exit()
+        # =============================================================================================
+        # make info_vector
+        self.info_vector = torch.cat([self.state_vector, self.last_action_vector], dim=-1)
+        # print(self.info_vector)
+        # print(self.info_vector.size())  # torch.Size([num_envs, 13])
+        # 13 = state(pos(3) + rot(2) + width(1) + height(1)) + last_action(pos(3) + rot(2) + width(1))
+        # exit()
+        # =============================================================================================
+        # make PPO input(control_input) # TODO: PPO input shape
+        # resnet input  shape:[num_envs, 3, camera_height, camera_width]
+        # resnet output shape:[num_envs, 512]
+        # info_vector   shape:[num_envs, 13]
+        self.control_input = torch.cat([self.perception_output, self.info_vector], dim=-1)
+        # print(self.control_input.size())    # torch.Size([16, 525])
+        # exit()
+
 
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -461,7 +623,90 @@ class YumiCube(VecTask):
 
     def pre_physics_step(self, actions):
         # do actions
-        self.actions = actions.clone().to(self.device)  # 没找到action在哪里设置的： action是网络的输出
+        #   action:
+        #       gripper pos: Vec3(x, y, z)      # x, y: net output, z: down 0.01m per step
+        #       gripper rot: (cos(rz), sin(rz))     or Vec3(rx, ry, rz)   rx, ry固定  # rz: net output
+        #       gripper width: float            # 到一定高度就尝试一次抓取: 低于一定高度就闭合夹爪
+        self.actions = actions.clone()  # 没找到action在哪里设置的： action是网络的输出
+        # exit()
+
+        # actions: 变化量，actions.size()是[num_envs, num_dofs]
+        # 提取所需的action ======================================================================================
+        # 将actions[:, :7]的joint space的q转换为operational space的x
+        operational_x = (self.j_eef @ self.actions[:, :7].unsqueeze(-1)).view(self.num_envs, 6)
+        # TODO: control_ik里的公式，damping代表什么，有没有必要解operational_x的时候考虑damping，考虑damping怎么计算
+        # 验证过：在control_ik里damping=0，operational_x与dpose近似相等，误差e-07级别及以下
+        # print(operational_x)
+        # print(operational_x.size())     # torch.Size([num_envs, 6])
+        # exit()
+        # ======================================================================================================
+        # action, gripper pos: Vec3(x, y, z)    # x, y from net output, z down 1cm per step
+        self.action_gripper_pos = operational_x[:, :3]
+        # print(self.action_gripper_pos)
+        # print(self.action_gripper_pos.size())       # torch.Size([num_envs, 3])
+        # exit()
+        # z:down 1cm per step
+        self.action_gripper_pos[:, 2] = self.rigid_body_states[:, self.hand_idxs[0], 2] - 0.01
+        # print(self.action_gripper_pos)
+        # print(self.action_gripper_pos.size())       # torch.Size([num_envs, 3])
+        # exit()
+        # ======================================================================================================
+        # action, gripper rot: (cos(rz), sin(rz))
+        rz = operational_x[:, 5].view(self.num_envs, 1)
+        self.action_gripper_rot = torch.cat([torch.cos(rz), torch.sin(rz)], dim=-1)
+        # print(self.action_gripper_rot.size())   # torch.Size([num_envs, 2])
+        # rot_euler: rx, ry 保持不变，rz from net output
+        rot_quat = self.rigid_body_states[:, self.hand_idxs[0], 3:7]
+        rot_euler = R.from_quat(rot_quat.cpu()).as_euler('xyz', degrees=False) if self.extrinsic_rotations \
+            else R.from_quat(rot_quat.cpu()).as_euler('XYZ', degrees=False)
+        rot_euler = torch.Tensor(rot_euler).to(self.device)
+        rot_euler[:, 2] = rz.view(self.num_envs)
+        # print(rot_euler.size())     # torch.Size([num_envs, 2])
+        # exit()
+        # ======================================================================================================
+        # gripper ========================================
+        # action, gripper width: float
+        self.grasp_offset = 0.12    # hand中心到cube表面的距离
+        self.grasp_height = self.table_dims.z + self.cube_size + self.grasp_offset
+        # 低于self.grasp_height就闭合夹爪, 否则维持原样（已经抓到的继续闭合，还没抓的继续打开）
+        # print((self.rigid_body_states[:, self.hand_idxs[0], 2].view(self.num_envs, 1) < self.grasp_height).size())
+        # print((torch.Tensor([[0., 0.]] * self.num_envs).to(self.device)).size())
+        # print((self.yumi_dof_pos[:, 7:9, :].view(self.num_envs, -1)).size())
+        gripper_actions = torch.where(self.rigid_body_states[:, self.hand_idxs[0], 2].view(self.num_envs, 1) < self.grasp_height,
+                                        torch.Tensor([[0., 0.]] * self.num_envs).to(self.device),
+                                        self.yumi_dof_pos[:, 7:9, :].view(self.num_envs, -1))
+        # print(gripper_actions)
+        # print(gripper_actions.size())
+        # TODO:【checked】reset的时候self.dof_state[:, 7:9]要设为打开【0.025， 0.025】---->确保__init__里self.yumi_default_dof_pos[7:9]要设为打开【0.025， 0.025】
+        self.action_gripper_width = (gripper_actions[:, 0] + gripper_actions[:, 1]).view(self.num_envs, 1)
+        # print(self.action_gripper_width)
+        # print(self.action_gripper_width.size())
+        # exit()
+        # =======================================================================================================
+        # net output输出全部9个dof (joint space) ，在简化的action (operational space)下，有一部分是启发式的，
+        # 从上面的计算得到operational space下的delta x[x, y, z, rx, ry, rz],
+        # 再转换到joint space下的前7个dof，再合并grippper action得到最终的control delta action (9 dofs, joint space)
+        # =======================================================================================================
+        # 得到operational space下的delta x[x, y, z, rx, ry, rz]
+        script_operational_x = torch.cat([self.action_gripper_pos, rot_euler], dim=-1)  # TODO:device
+        # print(script_operational_x)
+        # print(script_operational_x.size())      # torch.Size([num_envs, 6])
+        # 转换到joint space下的前7个dof
+        script_joint_q = control_ik(script_operational_x.unsqueeze(-1), self.device, self.j_eef, self.num_envs, self.damping)   # TODO: damping
+        # print(script_joint_q)
+        # print(script_joint_q.size())    # torch.Size([num_envs, 7])
+        # 合并grippper action得到最终的control delta action (9 dofs, joint space)
+        self.actions = torch.cat([script_joint_q, gripper_actions], dim=-1)  # TODO:shape, device
+        # # print(self.actions)
+        # print(self.actions.size())  # torch.Size([num_envs, 9])
+        # exit()
+        # =======================================================================================================
+        # reshape tensor for observation
+        # make last_action_vector
+        self.last_action_vector = torch.cat([self.action_gripper_pos, self.action_gripper_rot, self.action_gripper_width], dim=-1)
+        # print(self.last_action_vector)
+        # print(self.last_action_vector.size())    # torch.Size([num_envs, 6]) # 6 = pos(3) + rot(2) + width(1)
+        # exit()
 
         targets = self.yumi_dof_targets + self.yumi_dof_speed_scales * self.dt * self.actions * self.action_scale
         # targets = self.yumi_dof_targets.clone().to(self.device)
@@ -507,9 +752,9 @@ if __name__ == "__main__":
             print(parsed_yaml)
         except yaml.YAMLError as exc:
             print(exc)
-    yumi = YumiCube(parsed_yaml, 'cuda:0', 0, False)
+    yumi = YumiCube(parsed_yaml, 'cuda:0', 0, headless=True)
     print("created YumiCube")
-    yumi.gym.prepare_sim(yumi.sim)
+    # yumi.gym.prepare_sim(yumi.sim)
     print("prepared sim")
 
     # # action4: 其他不变，夹爪随机开合
@@ -520,18 +765,25 @@ if __name__ == "__main__":
     # gripper_action = gripper_action.view(yumi.num_envs, 2)
     print("====================================== Simulation start ======================================")
     i = 0
-    while not yumi.gym.query_viewer_has_closed(yumi.viewer):
+    # while not yumi.gym.query_viewer_has_closed(yumi.viewer):
+    while True:
         # step the physics
         yumi.gym.simulate(yumi.sim)
         yumi.gym.fetch_results(yumi.sim, True)
-        # communicate physics to graphics system
-        yumi.gym.step_graphics(yumi.sim)
-        # render the camera sensors
-        yumi.gym.render_all_camera_sensors(yumi.sim)
 
+        # # render the camera sensors
+        # yumi.gym.render_all_camera_sensors(yumi.sim)
+
+        # yumi.compute_observations()
+        yumi.gym.refresh_actor_root_state_tensor(yumi.sim)
+        yumi.gym.refresh_dof_state_tensor(yumi.sim)
+        yumi.gym.refresh_rigid_body_state_tensor(yumi.sim)
+        yumi.gym.refresh_jacobian_tensors(yumi.sim)
+        # d_action = torch.zeros_like(yumi.yumi_dof_pos, device=yumi.device).view(yumi.num_envs, 9)
+        # yumi.pre_physics_step(d_action)
         # ====================================================
         # main code
-        yumi.compute_observations()
+
         # ===================================================================
         # config d_actions  ps.这里是delta actions，不是actions
         # Maximum velocity: [0:7]4.e+02  [7:9]1.e+06
@@ -547,13 +799,13 @@ if __name__ == "__main__":
         # ===================================================================
         # action = yumi.yumi_dof_pos.contiguous().squeeze(-1)
         d_action = torch.zeros_like(yumi.yumi_dof_pos, device=yumi.device).view(yumi.num_envs, 9)
-        # ==========================================================================================
-        # action1: 其他不变，z下降1cm
-        pos_err1 = torch.Tensor([0, 0, -0.01]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 3)
-        orn = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
-        orn_err1 = orientation_error(orn, orn)
-        dpose1 = torch.cat([pos_err1, orn_err1], -1).unsqueeze(-1)
-        # ==========================================================================================
+        # # ==========================================================================================
+        # # action1: 其他不变，z下降1cm
+        # pos_err1 = torch.Tensor([0, 0, -0.01]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 3)
+        # orn = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
+        # orn_err1 = orientation_error(orn, orn)
+        # dpose1 = torch.cat([pos_err1, orn_err1], -1).unsqueeze(-1)
+        # # ==========================================================================================
         # action2: 其他不变 x, y 随机[0，0.01]
         # pos_err2_xy = 0.2 * (torch.rand((yumi.num_envs, 2), device=yumi.device) - 0.5)
         pos_err2_xy = 0.1 * (torch.rand((yumi.num_envs, 2), device=yumi.device))
@@ -563,77 +815,101 @@ if __name__ == "__main__":
         orn = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
         orn_err2 = orientation_error(orn, orn)
         dpose2 = torch.cat([pos_err2, orn_err2], -1).unsqueeze(-1)
-        # ==========================================================================================
-        # action3: 其他不变，yaw旋转
-        # 最大角度: max_angle（弧度）
-        # 四元数[cos(angle/2), 0, 0, sin(angle/2)]
-        # cos(angle/2)  [0, max_cos]
-        # sin(angle/2)  [-max_sin, max_sin](正负都有）  now[0, max_sin](只向正方向移动)
-        max_angle = np.pi / 12.0
-        max_cos = np.cos(max_angle / 2)
-        max_sin = np.sin(max_angle / 2)
-        rand_cos_tensor = max_cos * torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1)
-        # rand_sin_tensor = 2 * max_sin * torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1) - max_sin
-        rand_sin_tensor = max_sin * torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1)
-        tensor0 = torch.Tensor([0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 1)
-        pos_err3 = torch.Tensor([0, 0, 0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs,
-                                                                                       3)  # shape [yumi.num_envs, 3]
-        orn0 = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
-        goal_orn = torch.cat([rand_cos_tensor, rand_sin_tensor, tensor0, tensor0], -1)
-        orn_err3 = orientation_error(goal_orn, orn0)
-        dpose3 = torch.cat([pos_err3, orn_err3], -1).unsqueeze(-1)
-        # ==========================================================================================
-        # action4: 其他不变，夹爪随机开合
-        gripper_rand = torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1)
-        gripper_action4 = torch.where(gripper_rand > 0.5,
-                                     torch.Tensor([[-0.025, -0.025]] * yumi.num_envs).to(yumi.device),
-                                     torch.Tensor([[0.025, 0.025]] * yumi.num_envs).to(yumi.device))
-        gripper_action4 = gripper_action4.view(yumi.num_envs, 2)
-        # ==========================================================================================
-        # action5: 其他不变，夹爪开 (不用担心超出dof limit，之后函数里有截断，正的就是不断打开）
-        gripper_action5 = torch.Tensor([[0.025, 0.025]] * yumi.num_envs).to(yumi.device).view(yumi.num_envs, 2)
-        # ==========================================================================================
-        # action6: 其他不变，夹爪合 (不用担心超出dof limit，之后函数里有截断，负的就是不断闭合）
-        gripper_action6 = torch.Tensor([[-0.025, -0.025]] * yumi.num_envs).to(yumi.device).view(yumi.num_envs, 2)
-        # ==========================================================================================
-        # action7: 其他不变 x+=0.01
-        pos_err7 = torch.Tensor([0.01, 0., 0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 3)
-        orn = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
-        orn_err7 = orientation_error(orn, orn)
-        dpose7 = torch.cat([pos_err7, orn_err7], -1).unsqueeze(-1)
-        # ==========================================================================================
-        # action8: 其他不变 y+=0.01
-        pos_err8 = torch.Tensor([0., 0.01, 0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 3)
-        orn = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
-        orn_err8 = orientation_error(orn, orn)
-        dpose8 = torch.cat([pos_err8, orn_err8], -1).unsqueeze(-1)
-        # ==========================================================================================
-        # choose action 1-8
-        # ==========================================================================================
+        # print(dpose2)
+        # print(dpose2.size())
+        # # ==========================================================================================
+        # # action3: 其他不变，yaw旋转
+        # # 最大角度: max_angle（弧度）
+        # # 四元数[cos(angle/2), 0, 0, sin(angle/2)]
+        # # cos(angle/2)  [0, max_cos]
+        # # sin(angle/2)  [-max_sin, max_sin](正负都有）  now[0, max_sin](只向正方向移动)
+        # max_angle = np.pi / 12.0
+        # max_cos = np.cos(max_angle / 2)
+        # max_sin = np.sin(max_angle / 2)
+        # rand_cos_tensor = max_cos * torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1)
+        # # rand_sin_tensor = 2 * max_sin * torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1) - max_sin
+        # rand_sin_tensor = max_sin * torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1)
+        # tensor0 = torch.Tensor([0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 1)
+        # pos_err3 = torch.Tensor([0, 0, 0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs,
+        #                                                                                3)  # shape [yumi.num_envs, 3]
+        # orn0 = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
+        # goal_orn = torch.cat([rand_cos_tensor, rand_sin_tensor, tensor0, tensor0], -1)
+        # orn_err3 = orientation_error(goal_orn, orn0)
+        # dpose3 = torch.cat([pos_err3, orn_err3], -1).unsqueeze(-1)
+        # # ==========================================================================================
+        # # action4: 其他不变，夹爪随机开合
+        # gripper_rand = torch.rand(yumi.num_envs, device=yumi.device).view(yumi.num_envs, 1)
+        # gripper_action4 = torch.where(gripper_rand > 0.5,
+        #                              torch.Tensor([[-0.025, -0.025]] * yumi.num_envs).to(yumi.device),
+        #                              torch.Tensor([[0.025, 0.025]] * yumi.num_envs).to(yumi.device))
+        # gripper_action4 = gripper_action4.view(yumi.num_envs, 2)
+        # # ==========================================================================================
+        # # action5: 其他不变，夹爪开 (不用担心超出dof limit，之后函数里有截断，正的就是不断打开）
+        # gripper_action5 = torch.Tensor([[0.025, 0.025]] * yumi.num_envs).to(yumi.device).view(yumi.num_envs, 2)
+        # # ==========================================================================================
+        # # action6: 其他不变，夹爪合 (不用担心超出dof limit，之后函数里有截断，负的就是不断闭合）
+        # gripper_action6 = torch.Tensor([[-0.025, -0.025]] * yumi.num_envs).to(yumi.device).view(yumi.num_envs, 2)
+        # # ==========================================================================================
+        # # action7: 其他不变 x+=0.01
+        # pos_err7 = torch.Tensor([0.01, 0., 0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 3)
+        # orn = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
+        # orn_err7 = orientation_error(orn, orn)
+        # dpose7 = torch.cat([pos_err7, orn_err7], -1).unsqueeze(-1)
+        # # ==========================================================================================
+        # # action8: 其他不变 y+=0.01
+        # pos_err8 = torch.Tensor([0., 0.01, 0.]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 3)
+        # orn = torch.Tensor([1, 0, 0, 0]).to(yumi.device).repeat(yumi.num_envs).view(yumi.num_envs, 4)
+        # orn_err8 = orientation_error(orn, orn)
+        # dpose8 = torch.cat([pos_err8, orn_err8], -1).unsqueeze(-1)
+        # # ==========================================================================================
+        # # choose action 1-8
+        # # ==========================================================================================
         # action1-3,7-8(下面两行）
-        dpose = dpose1  # TODO:choose action
-        d_action[:, :7] = control_ik(dpose, yumi.device, yumi.j_eef, yumi.num_envs)
+        dpose = dpose2  # TODO:choose action
+        d_action[:, :7] = control_ik(dpose, yumi.device, yumi.j_eef, yumi.num_envs, yumi.damping)
         # # action4-6（下面一行）
-        # d_action[:, 7:9] = gripper_action5
+        # # d_action[:, 7:9] = gripper_action5
         # Deploy actions
         yumi.pre_physics_step(d_action)
+        # print(yumi.operational_x - dpose2.view(yumi.num_envs, 6))
+        # # 验证过：在control_ik里damping=0，operational_x与dpose近似相等，误差e-07以下
+        # exit()
         # yumi.gym.set_dof_position_target_tensor(yumi.sim, gymtorch.unwrap_tensor(d_action))
-        # =====================================================
+        # # =====================================================
+        yumi.compute_observations()
+        # # ===================================================================================================
+        # # ===================================================================================================
+        # # # test reset
+        # # if i % 100 == 0:
+        # #     yumi.reset_idx(torch.arange(yumi.num_envs, device=yumi.device))
+        # #     print("reset%d" % (i // 100))
+        #
+        # # ===================================================================================================
+        # # ===================================================================================================
+        # # save image
+        # if i % 5 == 0:
+        #     save.save_images(yumi.gym, yumi.sim, yumi.num_envs, yumi.envs, yumi.cameras, "yumi_image_wrist", i)
 
-        # ===================================================================================================
-        # ===================================================================================================
-        # test reset
-        if i % 100 == 0:
-            yumi.reset_idx(torch.arange(yumi.num_envs, device=yumi.device))
-            print("reset%d" % (i // 100))
+
         print("run%d" % i)
         i += 1
 
+        # communicate physics to graphics system
         yumi.gym.step_graphics(yumi.sim)
-        yumi.gym.draw_viewer(yumi.viewer, yumi.sim, False)
-        yumi.gym.sync_frame_time(yumi.sim)
+        if not yumi.headless:
+            # render the viewer
+            yumi.gym.draw_viewer(yumi.viewer, yumi.sim, True)
+
+            # Wait for dt to elapse in real time to sync viewer with
+            # simulation rate. Not necessary in headless.
+            yumi.gym.sync_frame_time(yumi.sim)
+
+            # Check for exit condition - user closed the viewer window
+            if yumi.gym.query_viewer_has_closed(yumi.viewer):
+                break
 
     # cleanup
-    yumi.gym.destroy_viewer(yumi.viewer)
+    if not yumi.headless:
+        yumi.gym.destroy_viewer(yumi.viewer)
     yumi.gym.destroy_sim(yumi.sim)
 

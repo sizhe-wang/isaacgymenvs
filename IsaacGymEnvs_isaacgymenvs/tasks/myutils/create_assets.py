@@ -36,6 +36,23 @@ def create_camera(gym, env, location, lookat, width, height):
     return camera_handle
 
 
+def create_camera_attach(gym, env, width, height, body_handle):
+    camera_props = gymapi.CameraProperties()
+    camera_props.width = width
+    camera_props.height = height
+    camera_props.enable_tensors = True
+    local_transform = gymapi.Transform()
+    local_transform.p.x = 0
+    local_transform.p.y = -0.04
+    local_transform.p.z = 0.08
+    local_transform.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 1, 0), np.radians(-90.0))
+    camera_handle = gym.create_camera_sensor(env, camera_props)
+    gym.attach_camera_to_body(camera_handle, env, body_handle, local_transform, gymapi.FOLLOW_TRANSFORM)
+
+    if printInfo.print_create_success:
+        print("Successfully created camera")
+    return camera_handle
+
 # ============================================================================================
 # create_yumi
 # 创建一个yumi并返回其handle
