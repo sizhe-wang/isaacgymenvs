@@ -429,6 +429,8 @@ class YumiCube(VecTask):
         print("lift height", (object_height - self.table_dims.z - self.cube_size / 2.)[0])
 
         # bonus for lift height.  bonus需要很大，否则train不出来(只有现在的1/20的时候就不行) max episode length需要大一点(300)
+        # 任务越复杂越需要更大的bonus和max episode length，比如cube在中心的时候，bonus是现在的1/2，max episode length也是1/2，
+        # 但cube不在中心，就得加大bonus和max episode length，否则gripper不会lift
         rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01,
                                torch.Tensor([[20.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
