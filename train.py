@@ -85,7 +85,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         multi_gpu=cfg.multi_gpu,
     )
 
-    # register the rl-games adapter to use inside the runner
+    # register the rl-games adapter to use inside the runner # run __init__
     vecenv.register('RLGPU',
                     lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
     env_configurations.register('rlgpu', {

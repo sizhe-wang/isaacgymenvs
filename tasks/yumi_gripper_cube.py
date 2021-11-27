@@ -394,9 +394,9 @@ class YumiCube(VecTask):
 
         # rewards -= abs(height - 0.13) * self.height_reward_scale
         d = torch.norm(self.rigid_body_states[:, cube_index, :2] - self.rigid_body_states[:, hand_index, :2], dim=-1)
-        dist_reward = 1.0 / (1.0 + d ** 2)
+        dist_reward = 1.0 / (1.0 + (10 * d) ** 2)
         dist_reward *= dist_reward
-        dist_reward = torch.where(d <= 0.01, dist_reward * 2, dist_reward)
+        # dist_reward = torch.where(d <= 0.01, dist_reward * 2, dist_reward)
         rewards += dist_reward
 
         # rewards -= torch.sum(self.actions ** 2, dim=-1)
@@ -506,7 +506,7 @@ class YumiCube(VecTask):
         # resnet output shape:[num_envs, 512]
         # info_vector   shape:[num_envs, 8]
         if self.real_feature_input:
-            self.control_input = torch.cat([self.perception_output, self.info_vector], dim=-1)
+            self.obs_buf = torch.cat([self.perception_output, self.info_vector], dim=-1)
         if not self.real_feature_input:
             # [cube_x, cube_y, cube_z, cube_cos(rz), cube_sin(rz),
             # gripper_x, gripper_y, gripper_z, gripper_cos(rz), gripper_sin(rz), gripper_width]
@@ -516,13 +516,13 @@ class YumiCube(VecTask):
             gripper_quat = self.rigid_body_states[:, self.hand_idxs[0], 3:7].view(self.num_envs, 4)
 
             # print("object", object_xyz)
-            # self.control_input = torch.cat([object_xyz, object_quat, self.gripper_pos, gripper_quat, self.gripper_width], dim=-1)
-            # self.control_input = torch.cat([object_xyz, self.gripper_pos], dim=-1)
-            self.control_input = object_xyz - self.gripper_pos
-            print("obs", self.control_input[0])
-            # print("obs", self.control_input.size())
-        self.obs_buf = self.control_input.clone()
+            # self.obs_buf = torch.cat([object_xyz, object_quat, self.gripper_pos, gripper_quat, self.gripper_width], dim=-1)
+            # self.obs_buf = torch.cat([object_xyz, self.gripper_pos], dim=-1)
+            self.obs_buf = object_xyz - self.gripper_pos
+            print("obs", self.obs_buf[0])
+            # print("obs", self.obs_buf.size())
         return self.obs_buf
+
 
     def reset_idx(self, env_ids):
         # reset yumi
