@@ -95,33 +95,33 @@ physics_engine: ${..physics_engine}
 
 # if given, will override the device setting in gym.
 env:
-  numEnvs: ${resolve_default:65536,${...num_envs}}
+  numEnvs: ${resolve_default:16384,${...num_envs}}
   envSpacing: 0.5
   episodeLength: 70
   enableDebugVis: False
 
-  clipObservations: 5.0
-  clipActions: 1.0
+  clipObservations: 5.0  # ???
+  clipActions: 1.0    # ???
 
-  startPositionNoise: 0.0
-  startRotationNoise: 0.0
+#  startPositionNoise: 0.0
+#  startRotationNoise: 0.0
 
   numCubes: 1   # 方块个数
-  aggregateMode: 3
+#  aggregateMode: 3
 
-  actionScale: 7.5
-  dofVelocityScale: 0.1
-  distRewardScale: 2.0
-  rotRewardScale: 0.5
-  aroundHandleRewardScale: 0.25
-  openRewardScale: 7.5
-  fingerDistRewardScale: 5.0
-  actionPenaltyScale: 0.1
+#  actionScale: 7.5
+#  dofVelocityScale: 0.1
+#  distRewardScale: 2.0
+#  rotRewardScale: 0.5
+#  aroundHandleRewardScale: 0.25
+#  openRewardScale: 7.5
+#  fingerDistRewardScale: 5.0
+#  actionPenaltyScale: 0.1
   heightRewardScale: 1
-  liftHeight: 0.15  # 0.15
+  liftHeight: 0.2  # 0.15
   xyzScale: 0.005
   rzScale: 0.02617993877991494
-  upTimes: 20
+#  upTimes: 20
   realFeatureInput: False   # True: resnet, False: object vector
 
   asset:
@@ -140,7 +140,7 @@ env:
 
 sim:
   dt: 0.0166 # 1/60
-  substeps: 1
+  substeps: 2
   up_axis: "z"
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   gravity: [0.0, 0.0, -9.81]
@@ -150,7 +150,7 @@ sim:
     use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
     num_position_iterations: 12
     num_velocity_iterations: 1
-    contact_offset: 0.005
+    contact_offset: 0.001
     rest_offset: 0.0
     bounce_threshold_velocity: 0.2
     max_depenetration_velocity: 1000.0

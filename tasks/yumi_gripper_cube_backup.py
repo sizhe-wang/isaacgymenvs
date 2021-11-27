@@ -71,27 +71,34 @@ class YumiCube(VecTask):
         self.cfg = cfg
         self.headless = headless
         self.env_spacing = self.cfg["env"]['envSpacing']
+        # self.sim_params = sim_params
+        # self.physics_engine = physics_engine
+        # self.cfg["device_type"] = device_type
+        # self.cfg["device_id"] = device_id
+        # self.cfg["headless"] = headless
+        # 关于强化学习
         self.max_episode_length = self.cfg["env"]["episodeLength"]
-        # self.action_scale = self.cfg["env"]["actionScale"]
-        # self.start_position_noise = self.cfg["env"]["startPositionNoise"]
-        # self.start_rotation_noise = self.cfg["env"]["startRotationNoise"]
+        # 关于状态
+        self.action_scale = self.cfg["env"]["actionScale"]
+        self.start_position_noise = self.cfg["env"]["startPositionNoise"]
+        self.start_rotation_noise = self.cfg["env"]["startRotationNoise"]
         self.num_cubes = self.cfg["env"]["numCubes"]
-        # self.aggregate_mode = self.cfg["env"]["aggregateMode"]
+        self.aggregate_mode = self.cfg["env"]["aggregateMode"]
 
-        # self.dof_vel_scale = self.cfg["env"]["dofVelocityScale"]
-        # self.dist_reward_scale = self.cfg["env"]["distRewardScale"]
-        # self.rot_reward_scale = self.cfg["env"]["rotRewardScale"]
-        # self.around_handle_reward_scale = self.cfg["env"]["aroundHandleRewardScale"]
-        # self.open_reward_scale = self.cfg["env"]["openRewardScale"]
-        # self.finger_dist_reward_scale = self.cfg["env"]["fingerDistRewardScale"]
-        # self.action_penalty_scale = self.cfg["env"]["actionPenaltyScale"]
+        self.dof_vel_scale = self.cfg["env"]["dofVelocityScale"]
+        self.dist_reward_scale = self.cfg["env"]["distRewardScale"]
+        self.rot_reward_scale = self.cfg["env"]["rotRewardScale"]
+        self.around_handle_reward_scale = self.cfg["env"]["aroundHandleRewardScale"]
+        self.open_reward_scale = self.cfg["env"]["openRewardScale"]
+        self.finger_dist_reward_scale = self.cfg["env"]["fingerDistRewardScale"]
+        self.action_penalty_scale = self.cfg["env"]["actionPenaltyScale"]
 
         self.height_reward_scale = self.cfg["env"]["heightRewardScale"]
         self.lift_height = self.cfg["env"]["liftHeight"]
 
         self.xyz_scale = self.cfg["env"]["xyzScale"]
         self.rz_scale = self.cfg["env"]["rzScale"]
-        # self.up_times = self.cfg["env"]["upTimes"]
+        self.up_times = self.cfg["env"]["upTimes"]
 
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
 
@@ -100,7 +107,7 @@ class YumiCube(VecTask):
         self.up_axis = "z"
         self.up_axis_idx = 2
 
-        # self.distX_offset = 0.04
+        self.distX_offset = 0.04
         self.dt = 1 / 60.
         # self.dt = 1 / 10.
 
@@ -112,7 +119,7 @@ class YumiCube(VecTask):
         if self.real_feature_input:
             self._num_obs = 520
         else:
-            self._num_obs = 3
+            self._num_obs = 15
         self._num_acts = 5
 
         self.cfg["env"]["numObservations"] = self._num_obs
@@ -131,11 +138,11 @@ class YumiCube(VecTask):
         self.cube_size = 0.035
         self.cube_spacing = self.cube_size + 0.005
         self.cube_middle = gymapi.Transform()
-        self.cube_middle.p = gymapi.Vec3(0.35, 0., self.table_dims.z + self.cube_size / 2. + 0.0025)
+        self.cube_middle.p = gymapi.Vec3(0.35, 0., self.table_dims.z + self.cube_size / 2. + 0.0002)
 
         # object reset space
         self.object_space_lower = gymapi.Vec3(0.05, -0.25, 0.)
-        self.object_space_upper = gymapi.Vec3(0.65, 0.25, self.table_dims.z + self.cube_size / 2. + 0.0025)
+        self.object_space_upper = gymapi.Vec3(0.65, 0.25, self.table_dims.z + self.cube_size / 2. + 0.0002)
 
         # prepare some lists
         self.envs = []
@@ -147,54 +154,74 @@ class YumiCube(VecTask):
         # about control_ik
         self.damping = 0.0
 
+
         # /add ===================================================================
         super().__init__(config=self.cfg, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
-
-        # # count close
-        # self.gripper_close = torch.Tensor([[0.]] * self.num_envs).to(self.device).view(self.num_envs, 1)
-        # # count gripper height under grasp height
-        # self.count_under_height = torch.Tensor([[0.]] * self.num_envs).to(self.device).view(self.num_envs, 1)
-        # # create up flags
-        # self.up_flags = torch.Tensor([[0]] * self.num_envs).to(self.device).view(self.num_envs, 1)
+        print("supper init finished")
+        # count close
+        self.gripper_close = torch.Tensor([[0.]] * self.num_envs).to(self.device).view(self.num_envs, 1)
+        # count gripper height under grasp height
+        self.count_under_height = torch.Tensor([[0.]] * self.num_envs).to(self.device).view(self.num_envs, 1)
+        # create up flags
+        self.up_flags = torch.Tensor([[0]] * self.num_envs).to(self.device).view(self.num_envs, 1)
         # get gym GPU state tensors
         actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        print("got gpu tensors")
 
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
+        print("refreshed tensors")
 
+        # create some wrapper tensors for different slices
+        # down_states = [28.67, -67.79, -19.64, -79.44, 117.26, -19.22, -1.01, 0.025, 0.025]
+        # down_states = [0.5003859, -1.1831587, -0.01762783, -0.34278267, -1.38648956, 2.04657308, -0.33545228, 0.025,
+        #                0.025]
+        # self.yumi_default_dof_pos = to_torch([0.5003859, -1.1831587, -0.01762783, -0.34278267, -1.38648956,
+        #                                       2.04657308, -0.33545228, 0.025, 0.025], device=self.device)
+        # 靠近桌面
+        # self.yumi_default_dof_pos = to_torch([0.9985358, -1.4063797, -0.8577260, 0.9911097, -1.9251643,
+        #                                       1.5174509, 0.9186748, 0.025, 0.025], device=self.device)
+        # 几乎贴近桌面
         self.yumi_default_dof_pos = to_torch([0, 0, 0, 0, 0.025, 0.025], device=self.device)
 
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
+        # TODO：dof_state_tensor: shape (num_envs * 9(num_dofs), 2)
         # 2: 0:position, 1:velocity
+
+        # self.yumi_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_yumi_dofs]
+        # self.yumi_dof_pos = self.yumi_dof_state[:, 0]
+        # self.yumi_dof_vel = self.yumi_dof_state[:, 1]
         self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
         self.yumi_dof_pos = self.dof_state[:, 0].view(self.num_envs, self.num_dofs)
         self.yumi_dof_vel = self.dof_state[:, 1].view(self.num_envs, self.num_dofs)
-
+        # self.yumi_dof_pos = self.dof_state[..., 0]
+        # self.yumi_dof_vel = self.dof_state[..., 1]
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
-
+        # print(self.rigid_body_states.size())
+        # exit()
         self.num_bodies = self.rigid_body_states.shape[1]
+        print("created tensors")
 
         self.root_state_tensor = gymtorch.wrap_tensor(actor_root_state_tensor).view(self.num_envs, -1, 13)
-
+        # TODO：root tensor: shape (num_envs, 3, 13)(cube只有一个的时候）
         # 3: 0:yumi, 1:table, 2:cube
 
         # add ===================================================================
-        self.cube_states = self.root_state_tensor[:, 2].view(self.num_envs, 1, 13)  # TODO: 确定cube在env中的序号是不是2: 是
-        self.yumi_states = self.root_state_tensor[:, 0].view(self.num_envs, 1, 13)
+        self.cube_states = self.root_state_tensor[:, 2].view(self.num_envs, 1, -1)  # TODO: 确定cube在env中的序号是不是2: 是
         # /add ===================================================================
+
 
         self.yumi_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device)
 
-        # self.global_indices = torch.arange(self.num_envs * (2 + self.num_cubes), dtype=torch.int32,
-        #                                    device=self.device).view(self.num_envs, -1)
-
+        self.global_indices = torch.arange(self.num_envs * (2 + self.num_cubes), dtype=torch.int32,
+                                           device=self.device).view(self.num_envs, -1)
+        print("finished something about cubes")
 
         # image
         if self.real_feature_input:
-            assert False
             self.model = models.resnet34(pretrained=True)
             self.model = torch.nn.Sequential(*(list(self.model.children())[:-1]))
 
@@ -210,14 +237,32 @@ class YumiCube(VecTask):
                 )])
             self.render_img = True
         else:
-            self.render_img = True
+            self.render_img = False
         # /add ===================================================================
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
-        self.success_ids = []
+        print("reset finished")
 
     def create_sim(self):
+        print("create sim")
         self.sim_params.up_axis = gymapi.UP_AXIS_Z
-        self.sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.81)
+        self.sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
+        self.sim_params.dt = self.dt
+        self.sim_params.substeps = 2
+        self.sim_params.use_gpu_pipeline = self.cfg["sim"]["use_gpu_pipeline"]
+        if self.physics_engine == gymapi.SIM_PHYSX:
+            self.sim_params.physx.solver_type = 1
+            self.sim_params.physx.num_position_iterations = 8
+            self.sim_params.physx.num_velocity_iterations = 1
+            self.sim_params.physx.rest_offset = 0.000
+            self.sim_params.physx.contact_offset = 0.0002
+            self.sim_params.physx.friction_offset_threshold = 0.001
+            self.sim_params.physx.friction_correlation_distance = 0.0005
+            self.sim_params.physx.num_threads = self.cfg["sim"]["physx"]["num_threads"]
+            self.sim_params.physx.use_gpu = self.cfg["sim"]["physx"]["use_gpu"]
+            self.sim_params.physx.max_gpu_contact_pairs = 2097152
+            # 增大max_gpu_contact_pairs来解决场景中碰撞较多时GPU显存溢出的问题
+        else:
+            raise Exception("This example can only be used with PhysX")
         self.sim = super().create_sim(
             self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         self._create_ground_plane()
@@ -241,7 +286,7 @@ class YumiCube(VecTask):
 
         # load yumi asset
         yumi_asset = load_assets.load_yumi(self.gym, self.sim, asset_root, yumi_asset_file)
-        # self.yumi_asset = yumi_asset
+        self.yumi_asset = yumi_asset
 
         # load table asset
         table_asset = load_assets.load_table(self.gym, self.sim, self.table_dims)
@@ -280,10 +325,19 @@ class YumiCube(VecTask):
         self.yumi_dof_speed_scales = torch.ones_like(self.yumi_dof_lower_limits)
 
         self.yumi_dof_speed_scales[[4, 5]] = 0.1
-        yumi_dof_props['effort'][4] = 200
-        yumi_dof_props['effort'][5] = 200
-
-
+        yumi_dof_props['effort'][4] = 50
+        yumi_dof_props['effort'][5] = 50
+        # print("yumi_dof_props", yumi_dof_props)
+        # exit()
+        # [( True, -2.94, 2.94, 1, 3.14, 300., 4.e+02,  80., 0., 0.)
+        # ( True, -2.5 , 0.76, 1, 3.14, 300., 4.e+02,  80., 0., 0.)
+        # ( True, -2.94, 2.94, 1, 3.14, 300., 4.e+02,  80., 0., 0.)
+        # ( True, -2.16, 1.4 , 1, 3.14, 300., 4.e+02,  80., 0., 0.)
+        # ( True, -5.06, 5.06, 1, 6.98, 300., 4.e+02,  80., 0., 0.)
+        # ( True, -1.54, 2.41, 1, 6.98, 300., 4.e+02,  80., 0., 0.)
+        # ( True, -4.  , 4.  , 1, 6.98, 300., 4.e+02,  80., 0., 0.)
+        # ( True,  0.  , 0.03, 1, 2.  , 200., 1.e+06, 100., 0., 0.)
+        # ( True,  0.  , 0.03, 1, 2.  , 200., 1.e+06, 100., 0., 0.)]
         # compute aggregate size
         num_yumi_bodies = self.gym.get_asset_rigid_body_count(yumi_asset)
         num_yumi_shapes = self.gym.get_asset_rigid_shape_count(yumi_asset)
@@ -291,13 +345,12 @@ class YumiCube(VecTask):
         num_table_shapes = self.gym.get_asset_rigid_shape_count(table_asset)
         num_cube_bodies = self.gym.get_asset_rigid_body_count(cube_asset)
         num_cube_shapes = self.gym.get_asset_rigid_shape_count(cube_asset)
-        max_agg_bodies = num_yumi_bodies + num_table_bodies + self.num_cubes * num_cube_bodies + 10
-        max_agg_shapes = num_yumi_shapes + num_table_shapes + self.num_cubes * num_cube_shapes + 10
+        max_agg_bodies = num_yumi_bodies + num_table_bodies + self.num_cubes * num_cube_bodies + 7
+        max_agg_shapes = num_yumi_shapes + num_table_shapes + self.num_cubes * num_cube_shapes + 3
 
         self.yumis = []
         self.tables = []
         self.default_cube_states = []
-        self.default_yumi_states = []
         self.cube_start = []
         self.envs = []
         self.cubes = []
@@ -323,10 +376,6 @@ class YumiCube(VecTask):
             # get inital hand pose
             hand_handle = self.gym.find_actor_rigid_body_handle(env_ptr, yumi_actor, "gripper_r_base")
             hand_pose = self.gym.get_rigid_transform(env_ptr, hand_handle)
-            self.default_yumi_states.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z,
-                                             hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w,
-                                             0, 0, 0, 0, 0, 0])
-            # exit()
             self.init_pos_list.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z])
             self.init_rot_list.append([hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w])
             # get global index of hand in rigid body state tensor
@@ -367,16 +416,13 @@ class YumiCube(VecTask):
         self.rfinger_handle = self.gym.find_actor_rigid_body_handle(self.envs[0], self.yumis[0], "gripper_r_finger_r")
         self.default_cube_states = to_torch(self.default_cube_states, device=self.device, dtype=torch.float
                                             ).view(self.num_envs, self.num_cubes, 13)
-        self.default_yumi_states = to_torch(self.default_yumi_states, device=self.device, dtype=torch.float
-                                            ).view(self.num_envs, 1, 13)
         print("made default cube states")
         # self.init_data()
         # print("init data finished")
 
     def compute_reward(self):
-
+        # print("compute reward")
         cube_index = self.gym.find_actor_rigid_body_index(self.envs[0], self.cubes[0], "box", gymapi.DOMAIN_ENV)
-
         hand_index = self.hand_idxs[0]
 
         object_height = self.rigid_body_states[:, cube_index, 2].view(self.num_envs, 1)
@@ -385,49 +431,45 @@ class YumiCube(VecTask):
         gripper_x = self.rigid_body_states[:, hand_index, 0].view(self.num_envs, 1)
         gripper_y = self.rigid_body_states[:, hand_index, 1].view(self.num_envs, 1)
         gripper_height = self.rigid_body_states[:, hand_index, 2].view(self.num_envs, 1)
-
-        # gripper_quat = self.rigid_body_states[:, 3, 3:7].view(self.num_envs, 4)[0]
+        # print("object", object_x[0], object_y[0], object_height[0])
+        # print("yumi", gripper_x[0], gripper_y[0], self.gripper_height[0])
+        # print("object", object_x[1], object_y[1], object_height[1])
+        # print("yumi", gripper_x[1], gripper_y[1], self.gripper_height[1])
 
         # height between hand and table
         height = (gripper_height - object_height).view(self.num_envs)
         rewards = torch.zeros(self.num_envs, device=self.device)
 
-        # rewards -= abs(height - 0.13) * self.height_reward_scale
-        d = torch.norm(self.rigid_body_states[:, cube_index, :2] - self.rigid_body_states[:, hand_index, :2], dim=-1)
-        dist_reward = 1.0 / (1.0 + d ** 2)
-        dist_reward *= dist_reward
-        dist_reward = torch.where(d <= 0.01, dist_reward * 2, dist_reward)
-        rewards += dist_reward
+        rewards -= abs(height - 0.125) * self.height_reward_scale
+        rewards -= abs(gripper_x - object_x).view(self.num_envs) * self.height_reward_scale * 10
+        rewards -= abs(gripper_y - object_y).view(self.num_envs) * self.height_reward_scale * 10
+        rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.height_reward_scale * 50
 
-        # rewards -= torch.sum(self.actions ** 2, dim=-1)
-
-        # rewards -= abs(gripper_x - object_x).view(self.num_envs) * self.height_reward_scale
-        # rewards -= abs(gripper_y - object_y).view(self.num_envs) * self.height_reward_scale
-        # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.height_reward_scale * 5
-        # distance = 0.01
-
+        # print("diff", (gripper_x - object_x)[0], (gripper_y - object_y)[0], (height - 0.12)[0])
+        # reward if success
+        # first , object height > certain height
+        # hand height > certain height + 0.1
+        distance = 0.01
         # success = (object_height > self.lift_height) & (self.gripper_height > self.lift_height + 0.1)
-        success = (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
-        # success_ = torch.where(success, torch.Tensor([[1.]] * self.num_envs).to(self.device),
-        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        # self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
+        success = (object_height > self.lift_height) & (abs(height - 0.125).view(self.num_envs, 1) < 0.015) & (abs(gripper_x - object_x) < distance) & (abs(gripper_y - object_y) < distance)
+        print("=========================success: %d===============================" % torch.sum(success))
+        print("diff", abs(gripper_x - object_x)[0], abs(gripper_y - object_y)[0], height[0] - 0.125)
 
-        # print("=========================success: %d===============================" % torch.sum(success))
-        # print("cube", object_x[0], object_y[0], object_height[0])
-        # print("gripper", gripper_x[0], gripper_y[0], gripper_height[0])
-        # rewards += torch.where(success, torch.Tensor([[100.]] * self.num_envs).to(self.device),
-        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        self.success = success.view(self.num_envs, 1)
+        rewards += torch.where(success, torch.Tensor([[10.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         # penalty
-        # rewards -= self.action_penalty_scale
-
-        # self.reset_buf = torch.where(success.view(self.num_envs), torch.ones_like(self.reset_buf), self.reset_buf)
+        rewards -= self.action_penalty_scale
+        # reset if max length reached
+        # print(self.reset_buf.size())
+        # exit()
+        self.reset_buf = torch.where(self.success.view(self.num_envs), torch.ones_like(self.reset_buf), self.reset_buf)
         self.reset_buf = torch.where(self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
         self.rew_buf = rewards
         print("reward", rewards[0])
-        print('================================================')
-        # return success_ids
 
     def compute_observations(self):
+        # print("compute observation")
         # obsevations:
         #   images: perception_output: [num_envs, 512]
         #   last action:
@@ -442,13 +484,12 @@ class YumiCube(VecTask):
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
-        # self.gym.refresh_jacobian_tensors(self.sim)
-        # if self.real_feature_input:
-        #     self.gym.step_graphics(self.sim)
-        # self.gym.step_graphics(self.sim)
+        self.gym.refresh_jacobian_tensors(self.sim)
+        if self.real_feature_input:
+            self.gym.step_graphics(self.sim)
 
         # images =====================================================================
-        if self.render_img and len(self.success_ids) > 0:
+        if self.render_img:
             # render the camera sensors
             self.gym.render_all_camera_sensors(self.sim)
 
@@ -459,29 +500,27 @@ class YumiCube(VecTask):
             # get image tensor
             image_tensors = []
 
-            # for j in range(self.num_envs):
-            for j in self.success_ids:
+            for j in range(self.num_envs):
                 _image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], gymapi.IMAGE_COLOR)
                 # H * W * 3
                 image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
                 image_tensors.append(image_tensor)
 
-                show_image = True
-                # if show_image and j == 0:
-                if show_image:
+                show_image = False
+                if show_image and j == 0:
                     image_array = image_tensor.permute(1, 2, 0).cpu().numpy()
                     image = Image.fromarray(image_array).convert("RGB")
                     image.show()
                     # exit()
-            # self.gym.end_access_image_tensors(self.sim)
-            #
-            # image_tensors = torch.stack(image_tensors)
-            # # Normalize
-            # image_tensors = image_tensors / 255.
-            # image_tensors = self.preprocess(image_tensors)
-            #
-            # self.perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()
-            ## torch.Size([num_envs, 512])
+            self.gym.end_access_image_tensors(self.sim)
+
+            image_tensors = torch.stack(image_tensors)
+            # Normalize
+            image_tensors = image_tensors / 255.
+            image_tensors = self.preprocess(image_tensors)
+
+            self.perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()
+            # torch.Size([num_envs, 512])
         # =============================================================================================
         # state, gripper pos: Vec3(x, y, z)
         # [num_envs, 3]
@@ -516,43 +555,36 @@ class YumiCube(VecTask):
             gripper_quat = self.rigid_body_states[:, self.hand_idxs[0], 3:7].view(self.num_envs, 4)
 
             # print("object", object_xyz)
-            # self.control_input = torch.cat([object_xyz, object_quat, self.gripper_pos, gripper_quat, self.gripper_width], dim=-1)
-            # self.control_input = torch.cat([object_xyz, self.gripper_pos], dim=-1)
-            self.control_input = object_xyz - self.gripper_pos
-            print("obs", self.control_input[0])
-            # print("obs", self.control_input.size())
-        self.obs_buf = self.control_input.clone()
-        return self.obs_buf
+            self.control_input = torch.cat([object_xyz, object_quat, self.gripper_pos, gripper_quat, self.gripper_width], dim=-1)
+            # print("control input", self.control_input[0], self.control_input.size())
+        return self.control_input
 
     def reset_idx(self, env_ids):
+        # print(env_ids)
+        # exit()
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
         # reset yumi
         # ==========================================================================================
+        # # reset yumi + noise
         pos = tensor_clamp(
             self.yumi_default_dof_pos.unsqueeze(0) + 0.0 * (
                         torch.rand((len(env_ids), self.num_yumi_dofs), device=self.device) - 0.5),
             self.yumi_dof_lower_limits, self.yumi_dof_upper_limits)
+        # print(pos.size())
+        # ==========================================================================================
+        # reset yumi without noise
+        # pos = tensor_clamp(self.yumi_default_dof_pos.repeat(len(env_ids)).view(len(env_ids), self.num_yumi_dofs),
+        #                    self.yumi_dof_lower_limits, self.yumi_dof_upper_limits)
+        # ==========================================================================================
+        # print("pos", pos.size())
+        # exit()
+        # print(self.yumi_dof_pos.size())
 
         self.yumi_dof_pos[env_ids, :] = pos
 
         self.yumi_dof_vel[env_ids, :] = torch.zeros_like(self.yumi_dof_vel[env_ids])
         self.yumi_dof_targets[env_ids, :self.num_yumi_dofs] = pos
-
-        multi_env_ids_int32 = self.yumi_indices[env_ids].to(torch.int32).flatten()  # TODO：yumi的gloabl index:0
-
-        self.gym.set_dof_position_target_tensor_indexed(self.sim,
-                                                        gymtorch.unwrap_tensor(self.yumi_dof_targets),
-                                                        gymtorch.unwrap_tensor(multi_env_ids_int32),
-                                                        len(multi_env_ids_int32))
-
-        self.gym.set_dof_state_tensor_indexed(self.sim,
-                                              gymtorch.unwrap_tensor(self.dof_state),
-                                              gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))
-
-        self.yumi_states[env_ids] = self.default_yumi_states[env_ids]
-        self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.root_state_tensor),
-                                                     gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))
-        print("reset")
+        # print("reset")
 
         # reset cubes   # TODO: 在pre或者post里 按一定频率检查cube是否还在object space里
         # ==========================================================================================
@@ -560,25 +592,74 @@ class YumiCube(VecTask):
             # cube_indices = self.global_indices[env_ids, 2].flatten()    # TODO：cube的gloabl index:2
             cube_indices = self.cube_indices[env_ids].to(torch.int32).flatten()
             self.cube_states[env_ids] = self.default_cube_states[env_ids]
-            # self.cube_states[env_ids, :, :2] += 0.2 * torch.rand((len(env_ids), 1, 2), device=self.device) - 0.1
-            # arc_on_z = torch.rand((len(env_ids), 1), device=self.device) * np.pi * 2 - np.pi
-            # axis_angle = torch.cat([torch.zeros((len(env_ids), 2), device=self.device), arc_on_z], dim=-1)
-            # quat_tensor = conversions.angle_axis_to_quaternion(axis_angle).view(len(env_ids), 1, 4)  # shape is [len(env_ids), 1, 4]
-            # self.cube_states[env_ids, :, 3:7] = quat_tensor[:, :, [1,2,3,0]]
+            self.cube_states[env_ids, :, :2] += 0.2 * torch.rand((len(env_ids), 1, 2), device=self.device) - 0.1
+            arc_on_z = torch.rand((len(env_ids), 1), device=self.device) * np.pi * 2 - np.pi
+            axis_angle = torch.cat([torch.zeros((len(env_ids), 2), device=self.device), arc_on_z], dim=-1)
+            quat_tensor = conversions.angle_axis_to_quaternion(axis_angle).view(len(env_ids), 1, 4)  # shape is [len(env_ids), 1, 4]
+            self.cube_states[env_ids, :, 3:7] = quat_tensor[:, :, [1,2,3,0]]
+
+            # reset to default
+            # self.cube_states[env_ids] = self.default_cube_states[env_ids].view(self.num_envs, 13)
+            # ==========================================================================================
+            # reset to random
+            # resize_root_tensor_cube = torch.tensor([self.cube_middle.p.x, self.cube_middle.p.y, self.cube_middle.p.z,
+            #                                         1, 0, 0, 0, 0, 0, 0, 0, 0, 0])\
+            #     .to(self.device).repeat(self.num_envs).view(self.num_envs, 1, 13)
+            # print("here1")
+            # # random
+            # resize_root_tensor_cube[:, 0, :2] += 0.2 * torch.rand((self.num_envs, 2), device=self.device) - 0.1
+            # print("here2")
+            # root_tensor_cube = resize_root_tensor_cube.view(self.num_envs, 13)
+            # print("here3")
+            # self.cube_states[env_ids] = root_tensor_cube[env_ids].view(len(env_ids), 1, -1)
+
+            # ==========================================================================================
+            # do cube reset
 
             self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                          gymtorch.unwrap_tensor(self.root_state_tensor),
                                                          gymtorch.unwrap_tensor(cube_indices), len(cube_indices))
+        # print("config reset cubes")
+        multi_env_ids_int32 = self.yumi_indices[env_ids].to(torch.int32).flatten()  # TODO：yumi的gloabl index:0
+        # multi_env_ids_int32 = torch.arange(self.num_envs, dtype=torch.int32, device=self.device).view(self.num_envs)[env_ids]
 
+        # dof_indices = torch.arange(self.num_envs, dtype=torch.int32, device=self.device).view(self.num_envs, -1)
+        # multi_env_ids_int32 = dof_indices[env_ids, :].flatten()
+        # TODO:dof_position_target_tensor yumi是几: 是0
+        # dof_state_tensor: shape (num_envs * 9(num_dofs), 2)
+        # 2: 0:position, 1:velocity
+        # do yumi dof target position reset
+        self.gym.set_dof_position_target_tensor_indexed(self.sim,
+                                                        gymtorch.unwrap_tensor(self.yumi_dof_targets),
+                                                        gymtorch.unwrap_tensor(multi_env_ids_int32),
+                                                        len(multi_env_ids_int32))
+
+        # print("do yumi dof target position reset")
+        # do yumi dof reset
+
+        self.gym.set_dof_state_tensor_indexed(self.sim,
+                                              gymtorch.unwrap_tensor(self.dof_state),
+                                              gymtorch.unwrap_tensor(multi_env_ids_int32), len(multi_env_ids_int32))
+
+        # print("do yumi dof reset")
+
+        # flush the buf
+
+        # print(env_ids)
+        # print(self.progress_buf.size())
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
 
     def pre_physics_step(self, actions):
-        print("action", actions[0])
+        # print("do action")
+        # print("actions:", actions)
+
         # actions : [delta_x, delta_y, delta_z, delta_rz, gripper_command]
 
-        # self.grasp_offset = 0.12  # hand中心到cube表面的距离
-        # self.grasp_height = self.table_dims.z + self.cube_size + self.grasp_offset
+
+        # print("dof", self.yumi_dof_pos[0])
+        self.grasp_offset = 0.12  # hand中心到cube表面的距离
+        self.grasp_height = self.table_dims.z + self.cube_size + self.grasp_offset
 
         gripper_actions = torch.where(actions[:, 4].view(self.num_envs, 1) < 0,
                                       torch.Tensor([[-0.0025, -0.0025]] * self.num_envs).to(self.device),
@@ -592,15 +673,12 @@ class YumiCube(VecTask):
         # action, gripper rot: (cos(rz), sin(rz))
         rz = actions[:, 3].view(self.num_envs, 1) * self.rz_scale
         self.action_gripper_rot = torch.cat([torch.cos(rz), torch.sin(rz)], dim=-1)
-        # self.actions = torch.cat([actions[:, :3] * self.xyz_scale, actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
-        self.actions = torch.cat([actions[:, :2] * self.xyz_scale, torch.zeros((self.num_envs, 1), device=self.device), actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
+        self.actions = torch.cat([actions[:, :3] * self.xyz_scale, actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
         # =======================================================================================================
         # reshape tensor for observation
         # make last_action_vector
         self.last_action_vector = torch.cat([self.action_gripper_pos, self.action_gripper_rot, self.action_gripper_width], dim=-1)
-        # targets = self.yumi_dof_pos.view(self.num_envs, self.num_dofs) + self.actions
-        targets = self.yumi_dof_targets + self.actions
-        # print("targets", targets[0])
+        targets = self.yumi_dof_pos.view(self.num_envs, self.num_dofs) + self.actions
 
         # 上下限截断
         self.yumi_dof_targets[:, :self.num_yumi_dofs] = tensor_clamp(
@@ -617,7 +695,31 @@ class YumiCube(VecTask):
 
         self.compute_observations()
         self.compute_reward()
+        # print("cube properties", self.gym.get_actor_rigid_body_properties(self.envs[0], self.cubes[0])[0].mass)
+        # exit()
 
+#####################################################################
+###=========================jit functions=========================###
+#####################################################################
+# @torch.jit.script
+# def compute_yumi_reward(
+#     device, reset_buf, progress_buf, height, object_height, hand_height, certain_height,
+#     num_envs, action_penalty_scale, height_reward_scale, max_episode_length
+# ):
+#     # height between hand and table
+#     rewards = torch.zeros(num_envs)
+#     rewards += height * height_reward_scale
+#     # reward if success
+#     # first , object height > certain height
+#     # hand height > certain height + 0.1
+#     success = (object_height > certain_height) & (hand_height > certain_height + 0.1)
+#     success = torch.Tensor(success, device=device).view(num_envs, 1)
+#     torch.where(success, torch.Tensor([[10.]] * num_envs, device=device), torch.Tensor([[0.]] * num_envs, device=device))
+#     # penalty
+#     rewards -= action_penalty_scale * progress_buf
+#     # reset if max length reached
+#     reset_buf = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), reset_buf)
+#     return rewards, reset_buf
 
 def quat_axis(q, axis=0):
     basis_vec = torch.zeros(q.shape[0], 3, device=q.device)

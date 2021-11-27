@@ -69,7 +69,8 @@ def create_camera_attach(gym, env, width, height, body_handle):
 def create_yumi(gym, env, yumi_asset, i):
     yumi_pose = gymapi.Transform()
     yumi_pose.p = gymapi.Vec3(0.35, 0, 0.33)
-    yumi_handle = gym.create_actor(env, yumi_asset, yumi_pose, "yumi", i, 2)
+    yumi_pose.r = gymapi.Quat(1, 0, 0, 0)
+    yumi_handle = gym.create_actor(env, yumi_asset, yumi_pose, "yumi", i, -1, 0)
     if printInfo.print_create_success:
         print("Successfully created yumi")
     return yumi_handle, yumi_pose
@@ -93,11 +94,12 @@ def create_cube(gym, env, cube_middle, cube_size, cube_asset, table_dims, i):
     cube_pose = gymapi.Transform()
     # cube_pose.p.x = cube_middle.p.x + np.random.uniform(-0.1, 0.1)
     # cube_pose.p.y = cube_middle.p.y + np.random.uniform(-0.1, 0.1)
-    cube_pose.p.x = cube_middle.p.x
-    cube_pose.p.y = cube_middle.p.y
+    cube_pose.p.x = cube_middle.p.x + 0.1
+    cube_pose.p.y = cube_middle.p.y + 0.1
     cube_pose.p.z = table_dims.z + 0.5 * cube_size
-    cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
-    cube_handle = gym.create_actor(env, cube_asset, cube_pose, "cube", i, 0)
+    # cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+    cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), 0)
+    cube_handle = gym.create_actor(env, cube_asset, cube_pose, "cube", i, -1, 0)
     color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
     gym.set_rigid_body_color(env, cube_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
     cube_properties = gymapi.RigidBodyProperties()
@@ -122,7 +124,7 @@ def create_cube(gym, env, cube_middle, cube_size, cube_asset, table_dims, i):
 def create_table(gym, env, table_dims, table_asset, i):
     table_pose = gymapi.Transform()
     table_pose.p = gymapi.Vec3(0.35, 0, 0.5 * table_dims.z)
-    table_handle = gym.create_actor(env, table_asset, table_pose, "table", i, 0)
+    table_handle = gym.create_actor(env, table_asset, table_pose, "table", i, -1, 0)
     if printInfo.print_create_success:
         print("Successfully created table")
     return table_handle, table_pose

@@ -22,15 +22,17 @@ def load_yumi(gym, sim, asset_root, asset_file):
     asset_options = gymapi.AssetOptions()
     asset_options.armature = 0.01  # 添加到所有资产刚体/链接的惯性张量的对角线元素的值。可以提高模拟稳定性
     asset_options.fix_base_link = True  # 导入时将资产基础设置为固定位置
+    asset_options.collapse_fixed_joints = True
     asset_options.disable_gravity = True
     asset_options.flip_visual_attachments = False  # 将网格从 Z-up 左手坐标系切换到 Y-up 右手坐标系。
     asset_options.default_dof_drive_mode = gymapi.DOF_MODE_POS
 
     # V-HACD
-    asset_options.vhacd_enabled = True  # 默认情况下，禁用凸分解
-    vhacd_params = gymapi.VhacdParams()
-    vhacd_params.resolution = 1000000  # 体素化阶段生成的最大体素数。10,000-64,000,000。默认 100,000。
-    asset_options.vhacd_params = vhacd_params
+    # asset_options.vhacd_enabled = False  # 默认情况下，禁用凸分解
+    # vhacd_params = gymapi.VhacdParams()
+    # vhacd_params.resolution = 1000000  # 体素化阶段生成的最大体素数。10,000-64,000,000。默认 100,000。
+    # asset_options.vhacd_params = vhacd_params
+
     # 单击查看器 GUI 中的“查看器”选项卡并启用“渲染碰撞网格”复选框来查看凸分解的结果。
     # 如果网格具有表示凸分解的子网格，Gym 可以将子网格加载为资产中的单独形状。要启用此功能，请使用
     # asset_options.convex_decomposition_from_submeshes = True。

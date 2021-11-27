@@ -374,56 +374,14 @@ class YumiCube(VecTask):
         # print("init data finished")
 
     def compute_reward(self):
-
         cube_index = self.gym.find_actor_rigid_body_index(self.envs[0], self.cubes[0], "box", gymapi.DOMAIN_ENV)
-
         hand_index = self.hand_idxs[0]
-
-        object_height = self.rigid_body_states[:, cube_index, 2].view(self.num_envs, 1)
-        object_x = self.rigid_body_states[:, cube_index, 0].view(self.num_envs, 1)
-        object_y = self.rigid_body_states[:, cube_index, 1].view(self.num_envs, 1)
-        gripper_x = self.rigid_body_states[:, hand_index, 0].view(self.num_envs, 1)
-        gripper_y = self.rigid_body_states[:, hand_index, 1].view(self.num_envs, 1)
-        gripper_height = self.rigid_body_states[:, hand_index, 2].view(self.num_envs, 1)
-
-        # gripper_quat = self.rigid_body_states[:, 3, 3:7].view(self.num_envs, 4)[0]
-
-        # height between hand and table
-        height = (gripper_height - object_height).view(self.num_envs)
-        rewards = torch.zeros(self.num_envs, device=self.device)
-
-        # rewards -= abs(height - 0.13) * self.height_reward_scale
-        d = torch.norm(self.rigid_body_states[:, cube_index, :2] - self.rigid_body_states[:, hand_index, :2], dim=-1)
-        dist_reward = 1.0 / (1.0 + d ** 2)
-        dist_reward *= dist_reward
-        dist_reward = torch.where(d <= 0.01, dist_reward * 2, dist_reward)
-        rewards += dist_reward
-
-        # rewards -= torch.sum(self.actions ** 2, dim=-1)
-
-        # rewards -= abs(gripper_x - object_x).view(self.num_envs) * self.height_reward_scale
-        # rewards -= abs(gripper_y - object_y).view(self.num_envs) * self.height_reward_scale
-        # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.height_reward_scale * 5
-        # distance = 0.01
-
-        # success = (object_height > self.lift_height) & (self.gripper_height > self.lift_height + 0.1)
-        success = (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
-        # success_ = torch.where(success, torch.Tensor([[1.]] * self.num_envs).to(self.device),
-        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        # self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
-
-        # print("=========================success: %d===============================" % torch.sum(success))
-        # print("cube", object_x[0], object_y[0], object_height[0])
-        # print("gripper", gripper_x[0], gripper_y[0], gripper_height[0])
-        # rewards += torch.where(success, torch.Tensor([[100.]] * self.num_envs).to(self.device),
-        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        # penalty
-        # rewards -= self.action_penalty_scale
-
-        # self.reset_buf = torch.where(success.view(self.num_envs), torch.ones_like(self.reset_buf), self.reset_buf)
-        self.reset_buf = torch.where(self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
-        self.rew_buf = rewards
-        print("reward", rewards[0])
+        self.rew_buf[:], self.reset_buf[:] = compute_yumi_reward(
+            self.rigid_body_states[:, cube_index, :3].view(self.num_envs, 3),
+            self.rigid_body_states[:, hand_index, :3].view(self.num_envs, 3),
+            self.actions, self.num_envs, self.device, self.reset_buf, self.progress_buf, self.max_episode_length
+        )
+        print("reward", self.rew_buf[0])
         print('================================================')
         # return success_ids
 
@@ -521,8 +479,7 @@ class YumiCube(VecTask):
             self.control_input = object_xyz - self.gripper_pos
             print("obs", self.control_input[0])
             # print("obs", self.control_input.size())
-        self.obs_buf = self.control_input.clone()
-        return self.obs_buf
+        return self.control_input
 
     def reset_idx(self, env_ids):
         # reset yumi
@@ -630,6 +587,57 @@ def orientation_error(desired, current):
     q_r = quat_mul(desired, cc)
     return q_r[:, 0:3] * torch.sign(q_r[:, 3]).unsqueeze(-1)
 
+
+#####################################################################
+###=========================jit functions=========================###
+#####################################################################
+
+
+@torch.jit.script
+def compute_yumi_reward(
+        object_pos, gripper_pos, actions, num_envs, device, reset_buf, progress_buf, max_episode_length
+):
+    object_height = object_pos[:, 2]
+    object_x = object_pos[:, 0]
+    object_y = object_pos[:, 1]
+    gripper_x = gripper_pos[:, 0]
+    gripper_y = gripper_pos[:, 1]
+    gripper_height = gripper_pos[:, 2]
+
+    # height between hand and table
+    height = (gripper_height - object_height).view(num_envs)
+    rewards = torch.zeros(num_envs, device=device)
+
+    # rewards -= abs(height - 0.13) * self.height_reward_scale
+    d = torch.norm(object_pos[:, :2] - gripper_pos[:, :2], dim=-1)
+    dist_reward = 1.0 / (1.0 + d ** 2)
+    dist_reward *= dist_reward
+    dist_reward = torch.where(d <= 0.01, dist_reward * 2, dist_reward)
+    rewards += dist_reward
+
+    # rewards -= abs(gripper_x - object_x).view(self.num_envs) * self.height_reward_scale
+    # rewards -= abs(gripper_y - object_y).view(self.num_envs) * self.height_reward_scale
+    # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.height_reward_scale * 5
+    # distance = 0.01
+
+    # success = (object_height > self.lift_height) & (self.gripper_height > self.lift_height + 0.1)
+    success = (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
+    # success_ = torch.where(success, torch.Tensor([[1.]] * self.num_envs).to(self.device),
+    #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+    # self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
+
+    # print("=========================success: %d===============================" % torch.sum(success))
+    # print("cube", object_x[0], object_y[0], object_height[0])
+    # print("gripper", gripper_x[0], gripper_y[0], gripper_height[0])
+    # rewards += torch.where(success, torch.Tensor([[100.]] * self.num_envs).to(self.device),
+    #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+    # penalty
+    # rewards -= self.action_penalty_scale
+    rewards -= torch.sum(actions ** 2, dim=-1)
+
+    # self.reset_buf = torch.where(success.view(self.num_envs), torch.ones_like(self.reset_buf), self.reset_buf)
+    reset_buf = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), reset_buf)
+    return rewards, reset_buf
 
 if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
