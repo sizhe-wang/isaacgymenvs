@@ -92,10 +92,10 @@ def create_yumi(gym, env, yumi_asset, i):
 # ============================================================================================
 def create_cube(gym, env, cube_middle, cube_size, cube_asset, table_dims, i):
     cube_pose = gymapi.Transform()
-    # cube_pose.p.x = cube_middle.p.x + np.random.uniform(-0.1, 0.1)
-    # cube_pose.p.y = cube_middle.p.y + np.random.uniform(-0.1, 0.1)
-    cube_pose.p.x = cube_middle.p.x + 0.1
-    cube_pose.p.y = cube_middle.p.y + 0.1
+    cube_pose.p.x = cube_middle.p.x + np.random.uniform(-0.1, 0.1)
+    cube_pose.p.y = cube_middle.p.y + np.random.uniform(-0.1, 0.1)
+    # cube_pose.p.x = cube_middle.p.x + 0.
+    # cube_pose.p.y = cube_middle.p.y + 0.
     cube_pose.p.z = table_dims.z + 0.5 * cube_size
     # cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
     cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), 0)

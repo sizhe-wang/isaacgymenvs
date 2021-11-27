@@ -97,7 +97,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:16384,${...num_envs}}
   envSpacing: 0.5
-  episodeLength: 70
+  episodeLength: 300  #150 # 70
   enableDebugVis: False
 
   clipObservations: 5.0  # ???
@@ -120,7 +120,9 @@ env:
   heightRewardScale: 1
   liftHeight: 0.2  # 0.15
   xyzScale: 0.005
-  rzScale: 0.02617993877991494
+  rzScale: 0.05235987755982988   # 0.02617993877991494
+  grippperActionsScale: 0.0025
+  liftRewardScale: 7.5
 #  upTimes: 20
   realFeatureInput: False   # True: resnet, False: object vector
 

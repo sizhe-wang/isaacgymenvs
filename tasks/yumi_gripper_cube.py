@@ -87,6 +87,8 @@ class YumiCube(VecTask):
         # self.action_penalty_scale = self.cfg["env"]["actionPenaltyScale"]
 
         self.height_reward_scale = self.cfg["env"]["heightRewardScale"]
+        self.lift_reward_scale = self.cfg["env"]["liftRewardScale"]
+
         self.lift_height = self.cfg["env"]["liftHeight"]
 
         self.xyz_scale = self.cfg["env"]["xyzScale"]
@@ -112,7 +114,7 @@ class YumiCube(VecTask):
         if self.real_feature_input:
             self._num_obs = 520
         else:
-            self._num_obs = 3
+            self._num_obs = 9
         self._num_acts = 5
 
         self.cfg["env"]["numObservations"] = self._num_obs
@@ -210,7 +212,7 @@ class YumiCube(VecTask):
                 )])
             self.render_img = True
         else:
-            self.render_img = True
+            self.render_img = False
         # /add ===================================================================
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self.success_ids = []
@@ -389,25 +391,59 @@ class YumiCube(VecTask):
         # gripper_quat = self.rigid_body_states[:, 3, 3:7].view(self.num_envs, 4)[0]
 
         # height between hand and table
-        height = (gripper_height - object_height).view(self.num_envs)
+        # height = (gripper_height - object_height).view(self.num_envs)
         rewards = torch.zeros(self.num_envs, device=self.device)
 
         # rewards -= abs(height - 0.13) * self.height_reward_scale
-        d = torch.norm(self.rigid_body_states[:, cube_index, :2] - self.rigid_body_states[:, hand_index, :2], dim=-1)
+        # d = torch.norm(self.rigid_body_states[:, cube_index, :2] - self.rigid_body_states[:, hand_index, :2], dim=-1)
+        # offset_height = 0.14
+        # diff_height = offset_height - self.cube_size / 2.
+        # offset_gripper_pos = torch.cat([self.rigid_body_states[:, hand_index, :2], self.rigid_body_states[:, hand_index, 2].unsqueeze(-1) - diff_height], dim=-1)
+        # # print(self.rigid_body_states[:, hand_index, :3].size())
+        # # print(offset_gripper_pos.size())
+        # # exit()
+        # rewards for distance
+        d = torch.norm(self.rigid_body_states[:, cube_index, :3] - self.rigid_body_states[:, hand_index, :3], dim=-1) - 0.135
         dist_reward = 1.0 / (1.0 + (10 * d) ** 2)
         dist_reward *= dist_reward
-        # dist_reward = torch.where(d <= 0.01, dist_reward * 2, dist_reward)
+        dist_reward = torch.where(d <= 0.005, dist_reward * 2, dist_reward)
         rewards += dist_reward
 
-        # rewards -= torch.sum(self.actions ** 2, dim=-1)
+        # rewards for angle_axis
+        angle_axis_z_cube = conversions.quaternion_to_angle_axis(self.rigid_body_states[:, cube_index, [6,3,4,5]])
+        angle_axis_z_gripper = conversions.quaternion_to_angle_axis(self.rigid_body_states[:, hand_index, [6,3,4,5]])
+        angle_axis_z_diff = abs(angle_axis_z_cube[:, 2] - angle_axis_z_gripper[:, 2])
+        angle_reward = 1.0 / (1.0 + (10 * angle_axis_z_diff) ** 2)
+        angle_reward *= angle_reward
+        # angle_reward = torch.where(angle_axis_z_diff <= 0.005, dist_reward * 2, dist_reward)
+        rewards += angle_reward
+        # print(angle_axis_z_cube[0])
+        # print(angle_axis_z_gripper[0])
+        # print(angle_axis_z_diff[0])
+        # print(angle_reward)
+        # exit()
+        # angle_axis_z_diff = angle_axis_z_cube
+        # reswards for lift height
+        # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.height_reward_scale
+        rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.lift_reward_scale
+        print("lift height", (object_height - self.table_dims.z - self.cube_size / 2.)[0])
 
-        # rewards -= abs(gripper_x - object_x).view(self.num_envs) * self.height_reward_scale
-        # rewards -= abs(gripper_y - object_y).view(self.num_envs) * self.height_reward_scale
-        # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.height_reward_scale * 5
-        # distance = 0.01
+        # bonus for lift height.  bonus需要很大，否则train不出来(只有现在的1/10的时候就不行) max episode length需要大一点(150)    cube在中心：
+        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01,
+                               torch.Tensor([[20.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03,
+                               torch.Tensor([[30.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.05,
+                               torch.Tensor([[40.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
 
-        # success = (object_height > self.lift_height) & (self.gripper_height > self.lift_height + 0.1)
-        success = (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
+        success = (object_height > self.lift_height) & (self.gripper_height > self.lift_height + 0.1) & (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
+
+        # around = d < 0.01
+        # print("around", around * rewards)
+        # exit()
         # success_ = torch.where(success, torch.Tensor([[1.]] * self.num_envs).to(self.device),
         #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         # self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
@@ -419,6 +455,8 @@ class YumiCube(VecTask):
         #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         # penalty
         # rewards -= self.action_penalty_scale
+        # penalty reward
+        # rewards -= torch.sum(self.actions ** 2, dim=-1)
 
         # self.reset_buf = torch.where(success.view(self.num_envs), torch.ones_like(self.reset_buf), self.reset_buf)
         self.reset_buf = torch.where(self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
@@ -515,14 +553,19 @@ class YumiCube(VecTask):
             object_quat = self.rigid_body_states[:, cube_index, 3:7].view(self.num_envs, 4)
             gripper_quat = self.rigid_body_states[:, self.hand_idxs[0], 3:7].view(self.num_envs, 4)
 
+            angle_axis_z_cube = conversions.quaternion_to_angle_axis(
+                self.rigid_body_states[:, cube_index, [6, 3, 4, 5]])
+            angle_axis_z_gripper = conversions.quaternion_to_angle_axis(
+                self.rigid_body_states[:, self.hand_idxs[0], [6, 3, 4, 5]])
+            angle_axis_z_diff = abs(angle_axis_z_cube[:, 2] - angle_axis_z_gripper[:, 2])
+
             # print("object", object_xyz)
-            # self.obs_buf = torch.cat([object_xyz, object_quat, self.gripper_pos, gripper_quat, self.gripper_width], dim=-1)
+            self.obs_buf = torch.cat([object_xyz, angle_axis_z_cube[:, 2].unsqueeze(-1), self.gripper_pos, angle_axis_z_gripper[:, 2].unsqueeze(-1), self.gripper_width], dim=-1)
             # self.obs_buf = torch.cat([object_xyz, self.gripper_pos], dim=-1)
-            self.obs_buf = object_xyz - self.gripper_pos
+            # self.obs_buf = object_xyz - self.gripper_pos
             print("obs", self.obs_buf[0])
             # print("obs", self.obs_buf.size())
         return self.obs_buf
-
 
     def reset_idx(self, env_ids):
         # reset yumi
@@ -592,8 +635,8 @@ class YumiCube(VecTask):
         # action, gripper rot: (cos(rz), sin(rz))
         rz = actions[:, 3].view(self.num_envs, 1) * self.rz_scale
         self.action_gripper_rot = torch.cat([torch.cos(rz), torch.sin(rz)], dim=-1)
-        # self.actions = torch.cat([actions[:, :3] * self.xyz_scale, actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
-        self.actions = torch.cat([actions[:, :2] * self.xyz_scale, torch.zeros((self.num_envs, 1), device=self.device), actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
+        self.actions = torch.cat([actions[:, :3] * self.xyz_scale, actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
+        # self.actions = torch.cat([actions[:, :2] * self.xyz_scale, torch.zeros((self.num_envs, 1), device=self.device), actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
         # =======================================================================================================
         # reshape tensor for observation
         # make last_action_vector
