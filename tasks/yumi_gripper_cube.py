@@ -1,24 +1,6 @@
-# 1123
-# 添加了obeservation和action的部分
-# 添加了headless   # 需要更改“YumiCube.yaml"里的“env：enableCameraSensors”为True，需要更改vec_task.py第78行（原来的读取enableCameraSensors有bug）
-# 添加了 info_vector(包含除resnet输出外的其他全部需要作为control input的信息
-#       info_vetor(size[num_envs,13])包含state(pos(3) + rot(2) + width(1) + height(1)) + last_action(pos(3) + rot(2) + width(1))
-# 添加了control_input(size[num_envs,525])包含resnet output(512) + info vector(13)
-# 调试：
-# obsevations:
-#   【checked】images: perception_output: [num_envs, 512]
-#   last action:
-#       【checked】gripper pos: Vec3(x, y, z)
-#       【checked】gripper rot: (cos(rz), sin(rz))     or Vec3(rx, ry, rz)   rx, ry固定
-#       【checked】gripper width: float
-#   state:
-#       【checked】gripper width: float
-#       【checked】gripper height real得不到          need?
-#       【checked】gripper pos: Vec3(x, y, z)        need?
-#       【checked】gripper rot: (cos, sin) 只绕z轴    need?
-# TODO：怎么验证四元数转换到欧拉角对不对,用的是scipy.spatial.transform.Rotation，应该用"intrinsic rotations" or "extrinsic rotations"?
-# TODO：control_ik里的damping
-# TODO：rewards
+# observations(num_envs, 11): [object_xyz, cos_sin_cube_rz, gripper_pos, cos_sin_gripper_rz, gripper_width]
+# actions(num_envs, 5): [delta_x, delta_y, delta_z, delta_rz, gripper_command]
+
 import os
 from isaacgym import gymapi
 from isaacgym import gymutil
@@ -441,7 +423,7 @@ class YumiCube(VecTask):
                                torch.Tensor([[40.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
 
-        success = (object_height > self.lift_height) & (self.gripper_height > self.lift_height + 0.1) & (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
+        # success = (object_height > self.lift_height) & (gripper_height > self.lift_height + 0.1) & (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
 
         # around = d < 0.01
         # print("around", around * rewards)
@@ -499,54 +481,55 @@ class YumiCube(VecTask):
             # get image tensor
             image_tensors = []
 
-            # for j in range(self.num_envs):
-            for j in self.success_ids:
+            for j in range(self.num_envs):
+            # for j in self.success_ids:
                 _image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], gymapi.IMAGE_COLOR)
                 # H * W * 3
                 image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
                 image_tensors.append(image_tensor)
 
-                show_image = True
+                show_image = False
                 # if show_image and j == 0:
                 if show_image:
                     image_array = image_tensor.permute(1, 2, 0).cpu().numpy()
                     image = Image.fromarray(image_array).convert("RGB")
                     image.show()
                     # exit()
-            # self.gym.end_access_image_tensors(self.sim)
-            #
-            # image_tensors = torch.stack(image_tensors)
-            # # Normalize
-            # image_tensors = image_tensors / 255.
-            # image_tensors = self.preprocess(image_tensors)
-            #
-            # self.perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()
-            ## torch.Size([num_envs, 512])
+            self.gym.end_access_image_tensors(self.sim)
+
+            image_tensors = torch.stack(image_tensors)
+            # Normalize
+            image_tensors = image_tensors / 255.
+            image_tensors = self.preprocess(image_tensors)
+
+            perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()
+            # torch.Size([num_envs, 512])
         # =============================================================================================
         # state, gripper pos: Vec3(x, y, z)
         # [num_envs, 3]
-        self.gripper_pos = self.rigid_body_states[:, self.hand_idxs[0], :3].view(self.num_envs, 3)
+        gripper_pos = self.rigid_body_states[:, self.hand_idxs[0], :3].view(self.num_envs, 3)
         # =============================================================================================
         # state, gripper width: float (meter)
         # [num_envs, 1]
-        self.gripper_width = self.yumi_dof_pos[:, 4] + self.yumi_dof_pos[:, 5]    # 两个gripper的dof都是正数[0, 0.025]
-        self.gripper_width = self.gripper_width.view(self.num_envs, 1)
+        gripper_width = self.yumi_dof_pos[:, 4] + self.yumi_dof_pos[:, 5]    # 两个gripper的dof都是正数[0, 0.025]
+        gripper_width = gripper_width.view(self.num_envs, 1)
         # =============================================================================================
         # state, gripper height: float
         # [num_envs, 1]
-        self.gripper_height = self.rigid_body_states[:, self.hand_idxs[0], 2].view(self.num_envs, 1)
+        gripper_height = self.rigid_body_states[:, self.hand_idxs[0], 2].view(self.num_envs, 1)
         # =============================================================================================
         # make state_vector
-        self.state_vector = torch.cat([self.gripper_width, self.gripper_height], dim=-1)
+        state_vector = torch.cat([gripper_width, gripper_height], dim=-1)
         # =============================================================================================
         # make info_vector
-        self.info_vector = torch.cat([self.state_vector, self.last_action_vector], dim=-1)
+        info_vector = torch.cat([state_vector, self.last_action_vector], dim=-1)
         # =============================================================================================
         # resnet input  shape:[num_envs, 3, camera_height, camera_width]
         # resnet output shape:[num_envs, 512]
         # info_vector   shape:[num_envs, 8]
         if self.real_feature_input:
-            self.obs_buf = torch.cat([self.perception_output, self.info_vector], dim=-1)
+            # self.obs_buf = torch.cat([perception_output, info_vector], dim=-1)
+            self.obs_buf = torch.cat([perception_output, state_vector], dim=-1)
         if not self.real_feature_input:
             # [cube_x, cube_y, cube_z, cube_cos(rz), cube_sin(rz),
             # gripper_x, gripper_y, gripper_z, gripper_cos(rz), gripper_sin(rz), gripper_width]
@@ -559,12 +542,16 @@ class YumiCube(VecTask):
                 self.rigid_body_states[:, cube_index, [6, 3, 4, 5]])
             angle_axis_z_gripper = conversions.quaternion_to_angle_axis(
                 self.rigid_body_states[:, self.hand_idxs[0], [6, 3, 4, 5]])
-            angle_axis_z_diff = abs(angle_axis_z_cube[:, 2] - angle_axis_z_gripper[:, 2])
 
-            # print("object", object_xyz)
-            self.obs_buf = torch.cat([object_xyz, angle_axis_z_cube[:, 2].unsqueeze(-1), self.gripper_pos, angle_axis_z_gripper[:, 2].unsqueeze(-1), self.gripper_width], dim=-1)
-            # self.obs_buf = torch.cat([object_xyz, self.gripper_pos], dim=-1)
-            # self.obs_buf = object_xyz - self.gripper_pos
+            # cube_rz = angle_axis_z_cube[:, 2].unsqueeze(-1)
+            # cos_sin_cube_rz = torch.cat([torch.cos(cube_rz), torch.sin(cube_rz)], dim=-1)
+            # gripper_rz = angle_axis_z_gripper[:, 2].unsqueeze(-1)
+            # cos_sin_gripper_rz = torch.cat([torch.cos(gripper_rz), torch.sin(gripper_rz)], dim=-1)
+
+            # self.obs_buf = torch.cat([object_xyz, cos_sin_cube_rz, gripper_pos, cos_sin_gripper_rz, gripper_width], dim=-1)
+            self.obs_buf = torch.cat([object_xyz, angle_axis_z_cube[:, 2].unsqueeze(-1), gripper_pos, angle_axis_z_gripper[:, 2].unsqueeze(-1), gripper_width], dim=-1)
+            # self.obs_buf = torch.cat([object_xyz, gripper_pos], dim=-1)
+            # self.obs_buf = object_xyz - gripper_pos
             print("obs", self.obs_buf[0])
             # print("obs", self.obs_buf.size())
         return self.obs_buf
@@ -629,20 +616,20 @@ class YumiCube(VecTask):
                                       torch.Tensor([[-0.0025, -0.0025]] * self.num_envs).to(self.device),
                                       torch.Tensor([[0.0025, 0.0025]] * self.num_envs).to(self.device))
 
-        self.action_gripper_width = (gripper_actions[:, 0] + gripper_actions[:, 1]).view(self.num_envs, 1)
+        action_gripper_width = (gripper_actions[:, 0] + gripper_actions[:, 1]).view(self.num_envs, 1)
         # ======================================================================================================
         # action, gripper pos: Vec3(x, y, z)    # x, y from net output, z down 1cm per step
-        self.action_gripper_pos = actions[:, :3] * self.xyz_scale
+        action_gripper_pos = actions[:, :3] * self.xyz_scale
         # ======================================================================================================
         # action, gripper rot: (cos(rz), sin(rz))
         rz = actions[:, 3].view(self.num_envs, 1) * self.rz_scale
-        self.action_gripper_rot = torch.cat([torch.cos(rz), torch.sin(rz)], dim=-1)
+        action_gripper_rot = torch.cat([torch.cos(rz), torch.sin(rz)], dim=-1)
         self.actions = torch.cat([actions[:, :3] * self.xyz_scale, actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
         # self.actions = torch.cat([actions[:, :2] * self.xyz_scale, torch.zeros((self.num_envs, 1), device=self.device), actions[:, 3].view(self.num_envs, 1) * self.rz_scale, gripper_actions], dim=-1)
         # =======================================================================================================
         # reshape tensor for observation
         # make last_action_vector
-        self.last_action_vector = torch.cat([self.action_gripper_pos, self.action_gripper_rot, self.action_gripper_width], dim=-1)
+        self.last_action_vector = torch.cat([action_gripper_pos, action_gripper_rot, action_gripper_width], dim=-1)
         # targets = self.yumi_dof_pos.view(self.num_envs, self.num_dofs) + self.actions
         targets = self.yumi_dof_targets + self.actions
         # print("targets", targets[0])
