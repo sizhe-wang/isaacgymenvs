@@ -1,5 +1,4 @@
-# observations(num_envs, 9): [object_xyz, cube_rz, gripper_pos, gripper_rz, gripper_width]
-# actions(num_envs, 5): [delta_x, delta_y, delta_z, delta_rz, gripper_command]
+
 
 import os
 from isaacgym import gymapi
@@ -30,11 +29,9 @@ from torchgeometry.core import conversions
 
 # ========================================================
 # 根据末端执行器的微分运动计算机器人关节的微分运动
-# dpose: 末端执行器的微分运动 delta的[p.x, p.y, p.z, r.x, r.y, r.z, r.w]
+# dpose: 末端执行器的微分运动 delta的[p.x, p.y, p.z, rx, ry, rz]
 # u: 关节的微分运动 （只考虑arm，不考虑finger，所以是7个dof）
 # j_eef：arm的雅可比矩阵
-# 没有阻尼的话 u = torch.inverse(j_eef) @ dpose
-# 但是yumi设置的是DOF_MODE_POS（其他选项是DOF_MODE_NONE，DOF_MODE_EFFORT，DOF_MODE_VEL），阻尼必须非零
 # ========================================================
 def control_ik(dpose, device, j_eef, num_envs, damping=0.05):
     # solve damped least squares
@@ -400,33 +397,38 @@ class YumiCube(VecTask):
         # angle_reward = torch.where(angle_axis_z_diff <= 0.005, dist_reward * 2, dist_reward)
         rewards += angle_reward
 
+        around = (abs(gripper_x - object_x) - 0.005 < 0) & (abs(gripper_y - object_y) - 0.005 < 0) & (abs(gripper_height - object_height) - 0.005 < 0)
+
         # reswards for lift height
-        rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.lift_reward_scale
-        # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.lift_reward_scale * dist_reward
+        rewards += ((object_height - self.table_dims.z - self.cube_size / 2.) * self.lift_reward_scale * around).view(self.num_envs)
         print("lift height", (object_height - self.table_dims.z - self.cube_size / 2.)[0])
 
-        # bonus for lift height.  bonus需要很大，否则train不出来(只有现在的1/20的时候就不行) max episode length需要大一点(300)
-        # 任务越复杂越需要更大的bonus和max episode length，比如cube在中心的时候，bonus是现在的1/2，max episode length也是1/2，
-        # 但cube不在中心，就得加大bonus和max episode length，否则gripper不会lift
-        # 在max episode length变大的时候bonus要相应变大，否则bonus不明显
-        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01,
-                               torch.Tensor([[60.]] * self.num_envs).to(self.device),
-                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03,
-                               torch.Tensor([[90.]] * self.num_envs).to(self.device),
-                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.05,
-                               torch.Tensor([[120.]] * self.num_envs).to(self.device),
-                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-
-        # success = (object_height > self.lift_height) & (gripper_height > self.lift_height + 0.1) & (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
 
         # around = d < 0.01
         # print("around", around * rewards)
         # exit()
-        # success_ = torch.where(success, torch.Tensor([[1.]] * self.num_envs).to(self.device),
-        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        # self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
+        success_ = torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
+                               torch.Tensor([[1.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
+        # bonus for lift height.  bonus需要很大，否则train不出来(只有现在的1/20的时候就不行) max episode length需要大一点(300)
+        # 任务越复杂越需要更大的bonus和max episode length，比如cube在中心的时候，bonus是现在的1/2，max episode length也是1/2，
+        # 但cube不在中心，就得加大bonus和max episode length，否则gripper不会lift
+        # 在max episode length变大的时候bonus要相应变大，否则bonus不明显
+        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
+                               (5 * dist_reward).view(self.num_envs, 1),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01,
+                               torch.Tensor([[10.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03,
+                               torch.Tensor([[30.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.05,
+                               torch.Tensor([[50.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+
+
 
         # print("=========================success: %d===============================" % torch.sum(success))
         # print("cube", object_x[0], object_y[0], object_height[0])
@@ -436,7 +438,8 @@ class YumiCube(VecTask):
         # penalty
         # rewards -= self.action_penalty_scale
         # penalty reward
-        # rewards -= torch.sum(self.actions ** 2, dim=-1)
+        rewards -= torch.norm(self.control_output, dim=-1) * 0.5
+        print("action penalty", torch.norm(self.control_output, dim=-1)[0] * 0.5)
 
         # self.reset_buf = torch.where(success.view(self.num_envs), torch.ones_like(self.reset_buf), self.reset_buf)
         self.reset_buf = torch.where(self.progress_buf >= self.max_episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
@@ -484,8 +487,8 @@ class YumiCube(VecTask):
         # gripper_height = self.rigid_body_states[:, self.hand_idxs[0], 2].view(self.num_envs, 1)
         # =============================================================================================
         # make state_vector
-        # state_vector = torch.cat([gripper_width, gripper_height], dim=-1)
         state_vector = torch.cat([gripper_pos, angle_axis_z_gripper[:, 2].unsqueeze(-1), gripper_width], dim=-1)
+        # state_vector = torch.cat([angle_axis_z_gripper[:, 2].unsqueeze(-1), gripper_width], dim=-1)
         # =============================================================================================
         # make info_vector
         # info_vector = torch.cat([state_vector, self.last_action_vector], dim=-1)
@@ -512,9 +515,10 @@ class YumiCube(VecTask):
                 image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
                 image_tensors.append(image_tensor)
 
-                show_image = False
-                if show_image and j == 0:
+                show_image = True
+                if show_image and len(self.success_ids) > 0 and j == self.success_ids[0]:
                 # if show_image:
+                    self.success_ids = []
                     image_array = image_tensor.permute(1, 2, 0).cpu().numpy()
                     image = Image.fromarray(image_array).convert("RGB")
                     image.show()
@@ -603,6 +607,7 @@ class YumiCube(VecTask):
 
     def pre_physics_step(self, actions):
         print("action", actions[0])
+        self.control_output = actions
         # actions : [delta_x, delta_y, delta_z, delta_rz, gripper_command]
 
         # self.grasp_offset = 0.12  # hand中心到cube表面的距离
