@@ -1,4 +1,4 @@
-# observations(num_envs, 11): [object_xyz, cube_rz, gripper_pos, gripper_rz, gripper_width]
+# observations(num_envs, 9): [object_xyz, cube_rz, gripper_pos, gripper_rz, gripper_width]
 # actions(num_envs, 5): [delta_x, delta_y, delta_z, delta_rz, gripper_command]
 
 import os
@@ -94,7 +94,7 @@ class YumiCube(VecTask):
         # self.prop_length = 0.08
         # self.prop_spacing = 0.09
         if self.real_feature_input:
-            self._num_obs = 520
+            self._num_obs = 517
         else:
             self._num_obs = 9
         self._num_acts = 5
@@ -178,7 +178,7 @@ class YumiCube(VecTask):
 
         # image
         if self.real_feature_input:
-            assert False
+            # assert False
             self.model = models.resnet34(pretrained=True)
             self.model = torch.nn.Sequential(*(list(self.model.children())[:-1]))
 
@@ -378,14 +378,14 @@ class YumiCube(VecTask):
 
         # rewards -= abs(height - 0.13) * self.height_reward_scale
         # d = torch.norm(self.rigid_body_states[:, cube_index, :2] - self.rigid_body_states[:, hand_index, :2], dim=-1)
-        # offset_height = 0.14
-        # diff_height = offset_height - self.cube_size / 2.
-        # offset_gripper_pos = torch.cat([self.rigid_body_states[:, hand_index, :2], self.rigid_body_states[:, hand_index, 2].unsqueeze(-1) - diff_height], dim=-1)
-        # # print(self.rigid_body_states[:, hand_index, :3].size())
-        # # print(offset_gripper_pos.size())
-        # # exit()
+        offset_height = 0.14
+        diff_height = offset_height - self.cube_size / 2.
+        offset_gripper_pos = torch.cat([self.rigid_body_states[:, hand_index, :2], (self.rigid_body_states[:, hand_index, 2].unsqueeze(-1) - diff_height)], dim=-1)
+        # print(self.rigid_body_states[:, hand_index, :3].size())
+        # print(offset_gripper_pos.size())
+        # exit()
         # rewards for distance
-        d = torch.norm(self.rigid_body_states[:, cube_index, :3] - self.rigid_body_states[:, hand_index, :3], dim=-1) - 0.135
+        d = torch.norm(self.rigid_body_states[:, cube_index, :3] - offset_gripper_pos, dim=-1)
         dist_reward = 1.0 / (1.0 + (10 * d) ** 2)
         dist_reward *= dist_reward
         dist_reward = torch.where(d <= 0.005, dist_reward * 2, dist_reward)
@@ -399,28 +399,24 @@ class YumiCube(VecTask):
         angle_reward *= angle_reward
         # angle_reward = torch.where(angle_axis_z_diff <= 0.005, dist_reward * 2, dist_reward)
         rewards += angle_reward
-        # print(angle_axis_z_cube[0])
-        # print(angle_axis_z_gripper[0])
-        # print(angle_axis_z_diff[0])
-        # print(angle_reward)
-        # exit()
-        # angle_axis_z_diff = angle_axis_z_cube
+
         # reswards for lift height
-        # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.height_reward_scale
         rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.lift_reward_scale
+        # rewards += (object_height - self.table_dims.z - self.cube_size / 2.).view(self.num_envs) * self.lift_reward_scale * dist_reward
         print("lift height", (object_height - self.table_dims.z - self.cube_size / 2.)[0])
 
         # bonus for lift height.  bonus需要很大，否则train不出来(只有现在的1/20的时候就不行) max episode length需要大一点(300)
         # 任务越复杂越需要更大的bonus和max episode length，比如cube在中心的时候，bonus是现在的1/2，max episode length也是1/2，
         # 但cube不在中心，就得加大bonus和max episode length，否则gripper不会lift
+        # 在max episode length变大的时候bonus要相应变大，否则bonus不明显
         rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01,
-                               torch.Tensor([[20.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[60.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03,
-                               torch.Tensor([[30.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[90.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.05,
-                               torch.Tensor([[40.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[120.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
 
         # success = (object_height > self.lift_height) & (gripper_height > self.lift_height + 0.1) & (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0)
@@ -465,45 +461,14 @@ class YumiCube(VecTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         # self.gym.refresh_jacobian_tensors(self.sim)
-        # if self.real_feature_input:
-        #     self.gym.step_graphics(self.sim)
+        if self.real_feature_input:
+            self.gym.step_graphics(self.sim)
         # self.gym.step_graphics(self.sim)
-
-        # images =====================================================================
-        if self.render_img and len(self.success_ids) > 0:
-            # render the camera sensors
-            self.gym.render_all_camera_sensors(self.sim)
-
-            self.gym.start_access_image_tensors(self.sim)
-            #
-            # User code to digest tensors
-            #
-            # get image tensor
-            image_tensors = []
-
-            for j in range(self.num_envs):
-            # for j in self.success_ids:
-                _image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], gymapi.IMAGE_COLOR)
-                # H * W * 3
-                image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
-                image_tensors.append(image_tensor)
-
-                show_image = False
-                # if show_image and j == 0:
-                if show_image:
-                    image_array = image_tensor.permute(1, 2, 0).cpu().numpy()
-                    image = Image.fromarray(image_array).convert("RGB")
-                    image.show()
-                    # exit()
-            self.gym.end_access_image_tensors(self.sim)
-
-            image_tensors = torch.stack(image_tensors)
-            # Normalize
-            image_tensors = image_tensors / 255.
-            image_tensors = self.preprocess(image_tensors)
-
-            perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()
-            # torch.Size([num_envs, 512])
+        cube_index = self.gym.find_actor_rigid_body_index(self.envs[0], self.cubes[0], "box", gymapi.DOMAIN_ENV)
+        angle_axis_z_cube = conversions.quaternion_to_angle_axis(
+            self.rigid_body_states[:, cube_index, [6, 3, 4, 5]])
+        angle_axis_z_gripper = conversions.quaternion_to_angle_axis(
+            self.rigid_body_states[:, self.hand_idxs[0], [6, 3, 4, 5]])
         # =============================================================================================
         # state, gripper pos: Vec3(x, y, z)
         # [num_envs, 3]
@@ -516,32 +481,64 @@ class YumiCube(VecTask):
         # =============================================================================================
         # state, gripper height: float
         # [num_envs, 1]
-        gripper_height = self.rigid_body_states[:, self.hand_idxs[0], 2].view(self.num_envs, 1)
+        # gripper_height = self.rigid_body_states[:, self.hand_idxs[0], 2].view(self.num_envs, 1)
         # =============================================================================================
         # make state_vector
-        state_vector = torch.cat([gripper_width, gripper_height], dim=-1)
+        # state_vector = torch.cat([gripper_width, gripper_height], dim=-1)
+        state_vector = torch.cat([gripper_pos, angle_axis_z_gripper[:, 2].unsqueeze(-1), gripper_width], dim=-1)
         # =============================================================================================
         # make info_vector
-        info_vector = torch.cat([state_vector, self.last_action_vector], dim=-1)
+        # info_vector = torch.cat([state_vector, self.last_action_vector], dim=-1)
         # =============================================================================================
         # resnet input  shape:[num_envs, 3, camera_height, camera_width]
         # resnet output shape:[num_envs, 512]
         # info_vector   shape:[num_envs, 8]
         if self.real_feature_input:
-            # self.obs_buf = torch.cat([perception_output, info_vector], dim=-1)
+            # images =====================================================================
+            # render the camera sensors
+            self.gym.render_all_camera_sensors(self.sim)
+            self.gym.start_access_image_tensors(self.sim)
+            #
+            # User code to digest tensors
+            #
+            # get image tensor
+            image_tensors = []
+
+            for j in range(self.num_envs):
+                # for j in self.success_ids:
+                _image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j],
+                                                                     gymapi.IMAGE_COLOR)
+                # H * W * 3
+                image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
+                image_tensors.append(image_tensor)
+
+                show_image = False
+                if show_image and j == 0:
+                # if show_image:
+                    image_array = image_tensor.permute(1, 2, 0).cpu().numpy()
+                    image = Image.fromarray(image_array).convert("RGB")
+                    image.show()
+                    # exit()
+            self.gym.end_access_image_tensors(self.sim)
+
+            image_tensors = torch.stack(image_tensors)
+            # Normalize
+            image_tensors = image_tensors / 255.
+            image_tensors = self.preprocess(image_tensors)
+
+            perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()   # torch.Size([num_envs, 512])
+
             self.obs_buf = torch.cat([perception_output, state_vector], dim=-1)
+            # self.obs_buf = torch.cat([perception_output, info_vector], dim=-1)
         if not self.real_feature_input:
             # [cube_x, cube_y, cube_z, cube_cos(rz), cube_sin(rz),
             # gripper_x, gripper_y, gripper_z, gripper_cos(rz), gripper_sin(rz), gripper_width]
-            cube_index = self.gym.find_actor_rigid_body_index(self.envs[0], self.cubes[0], "box", gymapi.DOMAIN_ENV)
+
             object_xyz = self.rigid_body_states[:, cube_index, :3].view(self.num_envs, 3)
             object_quat = self.rigid_body_states[:, cube_index, 3:7].view(self.num_envs, 4)
             gripper_quat = self.rigid_body_states[:, self.hand_idxs[0], 3:7].view(self.num_envs, 4)
 
-            angle_axis_z_cube = conversions.quaternion_to_angle_axis(
-                self.rigid_body_states[:, cube_index, [6, 3, 4, 5]])
-            angle_axis_z_gripper = conversions.quaternion_to_angle_axis(
-                self.rigid_body_states[:, self.hand_idxs[0], [6, 3, 4, 5]])
+
 
             # cube_rz = angle_axis_z_cube[:, 2].unsqueeze(-1)
             # cos_sin_cube_rz = torch.cat([torch.cos(cube_rz), torch.sin(cube_rz)], dim=-1)
@@ -553,7 +550,6 @@ class YumiCube(VecTask):
             # self.obs_buf = torch.cat([object_xyz, gripper_pos], dim=-1)
             # self.obs_buf = object_xyz - gripper_pos
             print("obs", self.obs_buf[0])
-            # print("obs", self.obs_buf.size())
         return self.obs_buf
 
     def reset_idx(self, env_ids):
