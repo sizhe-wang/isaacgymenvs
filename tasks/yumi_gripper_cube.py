@@ -1,4 +1,4 @@
-# observations(num_envs, 11): [object_xyz, cos_sin_cube_rz, gripper_pos, cos_sin_gripper_rz, gripper_width]
+# observations(num_envs, 11): [object_xyz, cube_rz, gripper_pos, gripper_rz, gripper_width]
 # actions(num_envs, 5): [delta_x, delta_y, delta_z, delta_rz, gripper_command]
 
 import os
