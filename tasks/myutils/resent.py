@@ -82,13 +82,18 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
         self.linear = nn.Linear(512*block.expansion, num_classes)
-
+        self.loss_func = nn.L1Loss()
 
     def create_scheduler(self, milestones=None, gamma=None):
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=gamma)
 
     def create_optimzer(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+
+    # def compute_loss(self):
+    #
+    #     loss = self.loss_func(output, target)
+    #     return loss
 
     def train_network(self, input_data=None, target=None):
         output = self.forward(input_data)
