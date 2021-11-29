@@ -27,6 +27,7 @@ from torchvision import datasets, transforms
 from torchvision import models
 import time
 from torchgeometry.core import conversions
+from IsaacGymEnvs.isaacgymenvs.tasks.myutils.resent import ResNet18
 
 
 # ========================================================
@@ -178,11 +179,12 @@ class YumiCube(VecTask):
         # image
         if self.real_feature_input:
             # assert False
-            self.model = models.resnet34(pretrained=True)
-            self.model = torch.nn.Sequential(*(list(self.model.children())[:-1]))
+            self.model = ResNet18(num_classes=4)
 
             self.model.to(self.device)
-            self.model.eval()
+            self.model.create_optimzer()
+            self.model.create_scheduler(milestones=[500, 1500], gamma=0.1)
+            self.model.train()
             self.preprocess = transforms.Compose([  # [1]
                 # transforms.Resize(472),                    #[2]
                 # transforms.CenterCrop(472),                #[3]
@@ -545,6 +547,7 @@ class YumiCube(VecTask):
                 image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
                 image_tensors.append(image_tensor)
 
+
                 show_image = False
                 if show_image and len(self.success_ids) > 0 and j == self.success_ids[0]:
                 # if show_image:
@@ -560,8 +563,12 @@ class YumiCube(VecTask):
             # Normalize
             image_tensors = image_tensors / 255.
             image_tensors = self.preprocess(image_tensors)
+            # self.model
+            input_data = image_tensors.view(-1, 3, 256, 256)
+            target = tensor()
+            perception_output = self.model.train_network(input_data, target).detach()
 
-            perception_output = self.model(image_tensors.view(-1, 3, 256, 256)).squeeze()   # torch.Size([num_envs, 512])
+            # perception_output = self.model().squeeze()   # torch.Size([num_envs, 512])
 
             self.obs_buf = torch.cat([perception_output, state_vector], dim=-1)
             # self.obs_buf = torch.cat([perception_output, info_vector], dim=-1)
@@ -573,13 +580,10 @@ class YumiCube(VecTask):
             object_quat = self.rigid_body_states[:, cube_index, 3:7].view(self.num_envs, 4)
             gripper_quat = self.rigid_body_states[:, self.hand_idxs[0], 3:7].view(self.num_envs, 4)
 
-
-
             # cube_rz = angle_axis_z_cube[:, 2].unsqueeze(-1)
             # cos_sin_cube_rz = torch.cat([torch.cos(cube_rz), torch.sin(cube_rz)], dim=-1)
             # gripper_rz = angle_axis_z_gripper[:, 2].unsqueeze(-1)
             # cos_sin_gripper_rz = torch.cat([torch.cos(gripper_rz), torch.sin(gripper_rz)], dim=-1)
-
             # self.obs_buf = torch.cat([object_xyz, cos_sin_cube_rz, gripper_pos, cos_sin_gripper_rz, gripper_width], dim=-1)
             self.obs_buf = torch.cat([object_xyz, angle_axis_z_cube[:, 2].unsqueeze(-1), gripper_pos, angle_axis_z_gripper[:, 2].unsqueeze(-1), gripper_width], dim=-1)
             # self.obs_buf = torch.cat([object_xyz, gripper_pos], dim=-1)
