@@ -1,4 +1,6 @@
-
+# num_envs=64
+# observations(num_envs, 514): [perception_output, gripper_pos, gripper_rz, gripper_width]
+# actions(num_envs, 5): [delta_x, delta_y, delta_z, delta_rz, gripper_command]
 
 import os
 from isaacgym import gymapi
@@ -397,10 +399,11 @@ class YumiCube(VecTask):
         # angle_reward = torch.where(angle_axis_z_diff <= 0.005, dist_reward * 2, dist_reward)
         rewards += angle_reward
 
-        around = (abs(gripper_x - object_x) - 0.005 < 0) & (abs(gripper_y - object_y) - 0.005 < 0) & (abs(gripper_height - object_height) - 0.005 < 0)
+        around = (abs(gripper_x - object_x) - 0.005 < 0) & (abs(gripper_y - object_y) - 0.005 < 0) & (abs(gripper_height - object_height - diff_height) - 0.02 < 0)
 
         # reswards for lift height
         rewards += ((object_height - self.table_dims.z - self.cube_size / 2.) * self.lift_reward_scale * around).view(self.num_envs)
+        rewards += ((gripper_height - self.table_dims.z - self.cube_size / 2. - diff_height) * self.lift_reward_scale * 0.1).view(self.num_envs)
         print("lift height", (object_height - self.table_dims.z - self.cube_size / 2.)[0])
 
 
@@ -415,17 +418,32 @@ class YumiCube(VecTask):
         # 任务越复杂越需要更大的bonus和max episode length，比如cube在中心的时候，bonus是现在的1/2，max episode length也是1/2，
         # 但cube不在中心，就得加大bonus和max episode length，否则gripper不会lift
         # 在max episode length变大的时候bonus要相应变大，否则bonus不明显
-        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
-                               (5 * dist_reward).view(self.num_envs, 1),
+        # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
+        #                        (5 * dist_reward).view(self.num_envs, 1),
+        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.0001) & around,
+        #                        (10 * dist_reward).view(self.num_envs, 1),
+        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.0002) & around,
+        #                        (15 * dist_reward).view(self.num_envs, 1),
+        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.0003) & around,
+        #                        (20 * dist_reward).view(self.num_envs, 1),
+        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.0005) & around,
+        #                        (25 * dist_reward).view(self.num_envs, 1),
+        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.0008) & around,
+        #                        (30 * dist_reward).view(self.num_envs, 1),
+        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01) & around,
+                               torch.Tensor([[20.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01,
-                               torch.Tensor([[10.]] * self.num_envs).to(self.device),
-                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03,
+        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03) & around,
                                torch.Tensor([[30.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        rewards += torch.where(object_height > (self.table_dims.z + self.cube_size / 2.) + 0.05,
-                               torch.Tensor([[50.]] * self.num_envs).to(self.device),
+        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.05) & around,
+                               torch.Tensor([[40.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
 
 
@@ -496,6 +514,18 @@ class YumiCube(VecTask):
         # resnet input  shape:[num_envs, 3, camera_height, camera_width]
         # resnet output shape:[num_envs, 512]
         # info_vector   shape:[num_envs, 8]
+
+        if len(self.success_ids) > 0:
+            object_height = self.rigid_body_states[:, cube_index, 2].view(self.num_envs, 1)
+            print("lifted:", (object_height - self.table_dims.z - self.cube_size / 2.)[self.success_ids])
+            with open("lifted.txt", "w") as f:
+                x = (object_height - self.table_dims.z - self.cube_size / 2.)[self.success_ids].cpu().numpy().tolist()
+                strNums = [str(x_i) for x_i in x]
+                str1 = ",".join(strNums)
+                f.write(str1)
+                f.write("\n")
+                f.write("-----------------------------------------------------------------------")
+
         if self.real_feature_input:
             # images =====================================================================
             # render the camera sensors
@@ -515,7 +545,7 @@ class YumiCube(VecTask):
                 image_tensor = gymtorch.wrap_tensor(_image_tensor)[:, :, :3].permute(2, 0, 1).contiguous()
                 image_tensors.append(image_tensor)
 
-                show_image = True
+                show_image = False
                 if show_image and len(self.success_ids) > 0 and j == self.success_ids[0]:
                 # if show_image:
                     self.success_ids = []
@@ -523,6 +553,7 @@ class YumiCube(VecTask):
                     image = Image.fromarray(image_array).convert("RGB")
                     image.show()
                     # exit()
+
             self.gym.end_access_image_tensors(self.sim)
 
             image_tensors = torch.stack(image_tensors)

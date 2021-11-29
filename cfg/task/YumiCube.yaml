@@ -124,7 +124,7 @@ env:
   grippperActionsScale: 0.0025
   liftRewardScale: 7.5
 #  upTimes: 20
-  realFeatureInput: False   # True: resnet, False: object vector
+  realFeatureInput: True   # True: resnet, False: object vector
 
   asset:
     assetRoot: "../../assets"
@@ -138,7 +138,7 @@ env:
     height: 256
 
   # set to True if you use camera sensors in the environment
-  enableCameraSensors: False  # TODO:important to set "True" if use camreas!!
+  enableCameraSensors: True  # TODO:important to set "True" if use camreas!!
 
 sim:
   dt: 0.0166 # 1/60
