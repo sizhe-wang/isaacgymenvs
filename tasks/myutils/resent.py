@@ -7,150 +7,84 @@ Reference:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, in_planes, planes, stride=1):
-        super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion*planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
-            )
-
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out += self.shortcut(x)
-        out = F.relu(out)
-        return out
-
-
-class Bottleneck(nn.Module):
-    expansion = 4
-
-    def __init__(self, in_planes, planes, stride=1):
-        super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, self.expansion *
-                               planes, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(self.expansion*planes)
-
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion*planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
-            )
-
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = F.relu(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-        out += self.shortcut(x)
-        out = F.relu(out)
-        return out
+from torchvision import models
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, learning_rate=1e-3):
+    def __init__(self, layers=18, expansion=1, num_classes=10, learning_rate=1e-3):
         super(ResNet, self).__init__()
-        self.lr=learning_rate
-        self.in_planes = 64
+        # self.model = torch.nn.Sequential(*(list(models.resnet18(pretrained=False, num_classes=100).children())[:-1]))
+        self._network = eval('models.resnet{}'.format(layers))(pretrained=False, num_classes=num_classes)
+        self.lr = learning_rate
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.linear = nn.Linear(512*block.expansion, num_classes)
-        self.loss_func = nn.L1Loss()
 
     def create_scheduler(self, milestones=None, gamma=None):
-        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=gamma)
+        self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optimizer, milestones=milestones, gamma=gamma)
 
     def create_optimzer(self):
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        self._optimizer = torch.optim.Adam(self._network.parameters(), lr=self.lr)
 
-    # def compute_loss(self):
-    #
-    #     loss = self.loss_func(output, target)
-    #     return loss
+    def compute_loss(self, output, target):
+        # loss calculation
+        # print("in loss, output", output[0])
+        # print("in loss, target", target[0])
+        loss = F.l1_loss(output, target)
+        return loss
 
     def train_network(self, input_data=None, target=None):
         output = self.forward(input_data)
-        loss = self.loss_func(output, target)
-        self.optimizer.zero_grad()
+        # loss computation
+        loss = self.compute_loss(output, target)
+        print(loss)
+        self._optimizer.zero_grad()
         loss.backward()
-        self.optimizer.step()
-        self.scheduler.step()
+        self._optimizer.step()
+        # self._scheduler.step()
         return output
 
-
-    def _make_layer(self, block, planes, num_blocks, stride):
-        strides = [stride] + [1]*(num_blocks-1)
-        layers = []
-        for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
-            self.in_planes = planes * block.expansion
-        return nn.Sequential(*layers)
+    def inference_network(self, input_data=None, target=None):
+        output = self.forward(input_data)
+        # loss computation
+        return output
 
     def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
-        out = F.avg_pool2d(out, 4)
-        out = out.view(out.size(0), -1)
-        out = self.linear(out)
+        out = self._network(x)
+        # print("in forward, out", out[0])
+        # print("in forward, x", x[0])
         return out
 
 
 def ResNet18(**kwargs):
-    return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+    return ResNet(layers=18, expansion=1, **kwargs)
 
 
 def ResNet34(**kwargs):
-    return ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
+    return ResNet(layers=34, expansion=1, **kwargs)
 
 
 def ResNet50(**kwargs):
-    return ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
+    return ResNet(layers=50, expansion=4, **kwargs)
 
 
 def ResNet101(**kwargs):
-    return ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
+    return ResNet(layers=101, expansion=4, **kwargs)
 
 
 def ResNet152(**kwargs):
-    return ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
+    return ResNet(layers=152, expansion=4, **kwargs)
 
 
 def test():
-    net = ResNet18(num_classes=50).cuda()
+    net = ResNet18(num_classes=4).cuda()
+
     net.create_optimzer()
     net.create_scheduler()
+    net.train()
+    for i in range(100):
+        input_data = torch.randn(16, 3, 256, 256).cuda()
+        target = torch.randn(16, 4).cuda()
+        y = net.train_network(input_data, target).detach()
 
-    y = net(torch.randn(1, 3, 32, 32).cuda()).detach()
-    print(y)
 
-test()
+if __name__ == "__main__":
+    test()

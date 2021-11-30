@@ -97,7 +97,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:16384,${...num_envs}}
   envSpacing: 0.5
-  episodeLength: 600  #300  #150 # 70
+  episodeLength: 300  #150 # 70
   enableDebugVis: False
 
   clipObservations: 5.0  # ???
@@ -123,8 +123,16 @@ env:
   rzScale: 0.05235987755982988   # 0.02617993877991494
   grippperActionsScale: 0.0025
   liftRewardScale: 7.5
-#  upTimes: 20
-  realFeatureInput: True   # True: resnet, False: object vector
+  upTimes: 20
+  realFeatureInput: False   # True: resnet, False: object vector
+  pretrained: True   # True: perception module--->pretrained resnet34  False: perception mudule--->resnet18
+  cubeRandom: True
+  gripperRandom: True
+  extrinsicRotations: True
+  mode: 1
+  # 1: obs: stats, without perception
+  # 2: obs: perception output + gripper states, perception: pretrained Resnet34
+  # 3: obs: perception output + gripper states, perception: not pretrained Resnet18, train perception and control together
 
   asset:
     assetRoot: "../../assets"
@@ -134,11 +142,11 @@ env:
   camera:
     same: True  # 相机在所有环境中的位姿是否相同
     # 分辨率
-    width: 256
-    height: 256
+    width: 256 #256
+    height: 256  #256
 
   # set to True if you use camera sensors in the environment
-  enableCameraSensors: True  # TODO:important to set "True" if use camreas!!
+  enableCameraSensors: False  # TODO:important to set "True" if use camreas!!
 
 sim:
   dt: 0.0166 # 1/60

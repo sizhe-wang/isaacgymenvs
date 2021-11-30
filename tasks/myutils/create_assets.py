@@ -66,10 +66,15 @@ def create_camera_attach(gym, env, width, height, body_handle):
 #       i: 创建env时的计数器，即创建env循环的i
 # return：创建相机的 handle
 # ============================================================================================
-def create_yumi(gym, env, yumi_asset, i):
+def create_yumi(gym, env, yumi_asset, i, random=False):
     yumi_pose = gymapi.Transform()
     yumi_pose.p = gymapi.Vec3(0.35, 0, 0.33)
     yumi_pose.r = gymapi.Quat(1, 0, 0, 0)
+    # yumi_pose.r *= gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi)) if random else gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), 0)
+    # if random:
+    #     yumi_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi)) * gymapi.Quat(1, 0, 0, 0)
+    # else:
+    #     yumi_pose.r = gymapi.Quat(1, 0, 0, 0)
     yumi_handle = gym.create_actor(env, yumi_asset, yumi_pose, "yumi", i, -1, 0)
     if printInfo.print_create_success:
         print("Successfully created yumi")
@@ -90,14 +95,14 @@ def create_yumi(gym, env, yumi_asset, i):
 #       i: 创建env时的计数器，即创建env循环的i
 # return：创建相机的 handle
 # ============================================================================================
-def create_cube(gym, env, cube_middle, cube_size, cube_asset, table_dims, i):
+def create_cube(gym, env, cube_middle, cube_size, cube_asset, table_dims, i, random=False):
     cube_pose = gymapi.Transform()
-    # cube_pose.p.x = cube_middle.p.x + np.random.uniform(-0.1, 0.1)
-    # cube_pose.p.y = cube_middle.p.y + np.random.uniform(-0.1, 0.1)
-    cube_pose.p.x = cube_middle.p.x + 0.
-    cube_pose.p.y = cube_middle.p.y + 0.
-    cube_pose.p.z = table_dims.z + 0.5 * cube_size
-    # cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+    # cube_pose.p.x = cube_middle.p.x + np.random.uniform(-0.1, 0.1) if random else cube_middle.p.x
+    # cube_pose.p.y = cube_middle.p.y + np.random.uniform(-0.1, 0.1) if random else cube_middle.p.y
+    cube_pose.p.x = cube_middle.p.x
+    cube_pose.p.y = cube_middle.p.y
+    cube_pose.p.z = cube_middle.p.z
+    # cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi)) if random else gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), 0)
     cube_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), 0)
     cube_handle = gym.create_actor(env, cube_asset, cube_pose, "cube", i, -1, 0)
     color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
