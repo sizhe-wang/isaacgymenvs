@@ -1,4 +1,4 @@
-# remains to be completed
+# show depth image and point cloud
 import os
 from isaacgym import gymapi
 from isaacgym import gymutil
@@ -28,6 +28,7 @@ from isaacgymenvs.tasks.myutils.perception_pretrain.resent_for_perception_pretra
 from autolab_core import RigidTransform
 from autolab_core import DepthImage, CameraIntrinsics
 from torch.utils.tensorboard import SummaryWriter
+import trimesh
 
 
 # ========================================================
@@ -442,13 +443,18 @@ class YumiCube(VecTask):
         cube_index = self.gym.find_actor_rigid_body_index(self.envs[0], self.cubes[0], "box", gymapi.DOMAIN_ENV)
         cube_xyz = self.rigid_body_states[:, cube_index, :3].view(self.num_envs, 3)
         rot_cube = self.get_cube_euler()
-        cube_state = torch.cat([cube_xyz, rot_cube], dim=-1)
+        # cube_state = torch.cat([cube_xyz, rot_cube], dim=-1)
 
         # =============================================================================================
         # convert cube rz to [0, pi/2]
+        rot_cube_z = rot_cube[:, 2].unsqueeze(-1)
         # [-pi, pi] --> [-pi, pi/2]
-
-
+        rot_cube_z = torch.where(rot_cube_z > np.pi / 2, rot_cube_z - np.pi / 2., rot_cube_z)
+        # [-pi, pi/2] --> [-pi/2, pi/2]
+        rot_cube_z = torch.where(rot_cube_z < 0, rot_cube_z + np.pi / 2., rot_cube_z)
+        # [-pi/2, pi/2] --> [0, pi/2]
+        rot_cube_z = torch.where(rot_cube_z < 0, rot_cube_z + np.pi / 2., rot_cube_z)
+        cube_state = torch.cat([cube_xyz, rot_cube[:, :2], rot_cube_z], dim=-1)
         # =============================================================================================
         # =============================================================================================
         # gripper state [x, y, z, rz, width]
@@ -478,41 +484,51 @@ class YumiCube(VecTask):
             # H * W * 3
             image_tensor = gymtorch.wrap_tensor(_image_tensor)
 
+            image_array = image_tensor.cpu().numpy()  # image_array is depth map, not distance map
+            depth_image = DepthImage(image_array)
+            # camera intrinsics
+            camera_intrinsics = CameraIntrinsics(frame='unspecified',
+                                                 fx=self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.)),
+                                                 fy=self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.)),
+                                                 cx=(self.camera_width - 1.0) / 2.,
+                                                 cy=(self.camera_height - 1.0) / 2.,
+                                                 height=self.camera_height,
+                                                 width=self.camera_width,
+                                                 skew=0)
+
+            point_normal = depth_image.point_normal_cloud(camera_intr=camera_intrinsics)
+            point_data = point_normal.point_cloud.data.transpose(1, 0)
 
             show_image = True
             if show_image and j == 0:
-                image_array = image_tensor.cpu().numpy()
+                # image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
 
-                # # -inf implies no depth value, set it to zero. output will be black.
-                # image_array[image_array == -np.inf] = 0
-                #
-                # # clamp depth image to 10 meters to make output image human friendly
-                # image_array[image_array < -10] = -10
-                #
-                # # flip the direction so near-objects are light and far objects are dark
-                # image_array = -255.0 * (image_array / np.min(image_array + 1e-4))
+                # -inf implies no depth value, set it to zero. output will be black.
+                image_array[image_array == -np.inf] = 0
 
-                # Convert to a pillow image and write it to disk
+                # clamp depth image to 10 meters to make output image human friendly
+                image_array[image_array < -10] = -10
+
+                # flip the direction so near-objects are light and far objects are dark
+                image_array = -255.0 * (image_array / np.min(image_array + 1e-4))
+
+                # Convert to a pillow image and show
                 normalized_depth_image = Image.fromarray(image_array.astype(np.uint8), mode="L")
-                # normalized_depth_image.show()
-                depth_image_array = self.dist2depth(image_array)
-                print(image_array)
-                print('---------------------')
-                print(depth_image_array)
-                # exit()
-                depth_image = DepthImage(depth_image_array)
-                # camera intrinsics
-                camera_intrinsics = CameraIntrinsics(frame='unspecified',
-                                                     fx=self.camera_width / np.tan(self.camera_horizontal_fov / 2.),
-                                                     fy=self.camera_height / np.tan(self.camera_vertical_fov / 2),
-                                                     cx=(self.camera_width - 1.0) / 2.,
-                                                     cy=(self.camera_height - 1.0) / 2.,
-                                                     height=self.camera_height,
-                                                     width=self.camera_width)
+                normalized_depth_image.show()
 
-                point_normal = depth_image.point_normal_cloud(camera_intr=camera_intrinsics)
-                point_data = point_normal.point_cloud.data.transpose(1, 0)
-                import trimesh
+                # depth_image = DepthImage(image_array)
+                # # camera intrinsics
+                # camera_intrinsics = CameraIntrinsics(frame='unspecified',
+                #                                      fx=self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.)),
+                #                                      fy=self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.)),
+                #                                      cx=(self.camera_width - 1.0) / 2.,
+                #                                      cy=(self.camera_height - 1.0) / 2.,
+                #                                      height=self.camera_height,
+                #                                      width=self.camera_width,
+                #                                      skew=0)
+                #
+                # point_normal = depth_image.point_normal_cloud(camera_intr=camera_intrinsics)
+                # point_data = point_normal.point_cloud.data.transpose(1, 0)
 
                 pc = trimesh.PointCloud(point_data, colors=[0, 255, 0])
                 pc.show()
@@ -523,7 +539,6 @@ class YumiCube(VecTask):
                 # point_cloud_image = Image.fromarray(point_normal.point_cloud.data, mode="RGB")
                 # point_cloud_image.show()
                 # print(point_normal.normal_cloud.data)
-                exit()
 
             image_tensor = image_tensor.unsqueeze(-1).repeat(1, 1, 3).permute(2, 0, 1).contiguous()
             image_tensor = torch.where(torch.isinf(image_tensor), torch.zeros_like(image_tensor, device=self.device), image_tensor)
@@ -538,7 +553,8 @@ class YumiCube(VecTask):
         self.gym.end_access_image_tensors(self.sim)
 
         image_tensors = torch.stack(image_tensors)
-        # print("image_tensors", image_tensors.shape)
+        print("image_tensors", image_tensors.shape)
+        exit()
         # Normalize
         # image_tensors = image_tensors / 255.
 
@@ -682,21 +698,72 @@ class YumiCube(VecTask):
         param dist: The distance data.
         return: The depth data
         """
+        if isinstance(dist, list) or hasattr(dist, "shape") and len(dist.shape) > 2:
+            return [self.dist2depth(img) for img in dist]
         height, width = dist.shape
 
         # Camera intrinsics
         cx = (width - 1.) / 2.
         cy = (height - 1.) / 2.
-        f = width / (2 * np.tan(self.camera_horizontal_fov / 2.) * np.sqrt(2))
+
+        f = width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.))
 
         # coordinate distances to principal point
         xs, ys = np.meshgrid(np.arange(dist.shape[1]), np.arange(dist.shape[0]))
-        x_opt = abs(xs - cx)
-        y_opt = abs(ys - cy)
+        x_opt = np.abs(xs - cx)
+        y_opt = np.abs(ys - cy)
 
         # from 3 equations: [{X == (x-c0)/f0*Z, Y == (y-c1)/f0*Z, X*X + Y*Y + Z*Z = d*d}, {X,Y,Z}]
         depth = dist * f / np.sqrt(x_opt ** 2 + y_opt ** 2 + f ** 2)
+
         return depth
+
+    def depth2pointcloud(self, depth):
+        """
+        param dist: The distance data.
+        return: The depth data
+        """
+        if isinstance(depth, list) or hasattr(depth, "shape") and len(depth.shape) > 2:
+            return [self.dist2depth(img) for img in depth]
+        height, width = depth.shape
+
+        mask = np.where(depth > 0)
+        x = mask[1]
+        y = mask[0]
+        normalized_x = -(width * 0.5 - x.astype(np.float32)) / width
+        normalized_y = (height * 0.5 - y.astype(np.float32)) / height
+
+        fx = self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.))
+        fy = self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.))
+
+        world_x = normalized_x * depth[y, x] / fx
+        world_y = normalized_y * depth[y, x] / fy
+        world_z = -depth[y, x]
+
+        ones = np.ones(world_z.shape[0], dtype=np.float32)
+
+        # pointcloud = np.vstack((world_x, world_y, world_z)).T
+        # print(pointcloud.shape)
+        # exit()
+        return np.vstack((world_x, world_y, world_z)).T
+
+        # # Camera intrinsics
+        # cx = (width - 1.) / 2.
+        # cy = (height - 1.) / 2.
+        #
+        # f = width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.))
+        #
+        # # coordinate distances to principal point
+        # xs, ys = np.meshgrid(np.arange(depth.shape[1]), np.arange(depth.shape[0]))
+        # x_opt = np.abs(xs - cx).astype(np.float32) / width
+        # y_opt = np.abs(ys - cy).astype(np.float32) / height
+        #
+        # X = depth * x_opt / f
+        # Y = depth * y_opt / f
+        # pointcloud = np.array([X, Y, depth])
+        # pointcloud.resize(3, 256*256).T
+        # print(pointcloud.shape)
+        return pointcloud
 
 def quat_axis(q, axis=0):
     basis_vec = torch.zeros(q.shape[0], 3, device=q.device)
