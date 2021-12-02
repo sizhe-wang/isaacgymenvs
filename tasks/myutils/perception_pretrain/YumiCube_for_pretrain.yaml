@@ -1,0 +1,87 @@
+# used to create the object
+name: YumiCube
+
+physics_engine: physx   # ${..physics_engine}
+
+# if given, will override the device setting in gym.
+env:
+  numEnvs: 100    # ${resolve_default:16384,${...num_envs}}
+  envSpacing: 0.5
+  episodeLength: 300  #150 # 70
+  enableDebugVis: False
+
+  clipObservations: 5.0  # ???
+  clipActions: 1.0    # ???
+
+#  startPositionNoise: 0.0
+#  startRotationNoise: 0.0
+
+  numCubes: 1   # 方块个数
+#  aggregateMode: 3
+
+#  actionScale: 7.5
+#  dofVelocityScale: 0.1
+#  distRewardScale: 2.0
+#  rotRewardScale: 0.5
+#  aroundHandleRewardScale: 0.25
+#  openRewardScale: 7.5
+#  fingerDistRewardScale: 5.0
+#  actionPenaltyScale: 0.1
+  heightRewardScale: 1
+  liftHeight: 0.2  # 0.15
+  xyzScale: 0.005
+  rzScale: 0.05235987755982988   # 0.02617993877991494
+  grippperActionsScale: 0.0025
+  liftRewardScale: 7.5
+  upTimes: 20
+  realFeatureInput: True   # True: resnet, False: object vector
+  pretrained: False   # True: perception module--->pretrained resnet34  False: perception mudule--->resnet18
+  cubeRandom: True
+  gripperRandom: True
+  extrinsicRotations: True
+  haveGravity: True
+  mode: 1
+  # 1: obs: stats, without perception
+  # 2: obs: perception output + gripper states, perception: pretrained Resnet34
+  # 3: obs: perception output + gripper states, perception: not pretrained Resnet18, train perception and control together
+
+  asset:
+    assetRoot: "../../../../assets/"
+
+    assetFileNameYumi: "urdf/yumi_description/urdf/yumi_only_gripper.urdf"
+
+  # camera config
+  camera:
+    same: True  # 相机在所有环境中的位姿是否相同
+    # 分辨率
+    width: 256 #256
+    height: 256  #256
+    horizontal_fov: 50.0
+
+  # set to True if you use camera sensors in the environment
+  enableCameraSensors: True  # TODO:important to set "True" if use camreas!!
+
+sim:
+  dt: 0.0166 # 1/60
+  substeps: 2
+  up_axis: "z"
+  use_gpu_pipeline: True    # ${eq:${...pipeline},"gpu"}
+  gravity: [0.0, 0.0, -9.81]
+  physx:
+    num_threads: 4    # ${....num_threads}
+    solver_type: 1    # ${....solver_type}
+    use_gpu: True   #${contains:"cuda",${....sim_device}} # set to False to run on CPU
+    num_position_iterations: 12
+    num_velocity_iterations: 1
+    contact_offset: 0.001
+    rest_offset: 0.0
+    bounce_threshold_velocity: 0.2
+    max_depenetration_velocity: 1000.0
+    default_buffer_size_multiplier: 5.0
+    max_gpu_contact_pairs: 1048576 # 1024*1024
+    num_subscenes: 4    # ${....num_subscenes}
+    contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (default - all contacts)
+
+task:
+  randomize: False
+

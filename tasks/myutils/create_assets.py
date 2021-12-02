@@ -25,12 +25,12 @@ import torch
 #
 # return：创建相机的 handle
 # ============================================================================================
-def create_camera(gym, env, location, lookat, width, height):
+def create_camera(gym, env, location, lookat, width, height, horizontal_fov=50.0):
     camera_props = gymapi.CameraProperties()
     camera_props.width = width
     camera_props.height = height
     camera_props.enable_tensors = True
-    camera_props.horizontal_fov = 50.0
+    camera_props.horizontal_fov = horizontal_fov
     camera_handle = gym.create_camera_sensor(env, camera_props)
     gym.set_camera_location(camera_handle, env, location, lookat)
     if printInfo.print_create_success:
@@ -38,11 +38,11 @@ def create_camera(gym, env, location, lookat, width, height):
     return camera_handle
 
 
-def create_camera_attach(gym, env, width, height, body_handle):
+def create_camera_attach(gym, env, width, height, body_handle, horizontal_fov=75.0):
     camera_props = gymapi.CameraProperties()
     camera_props.width = width
     camera_props.height = height
-    camera_props.enable_tensors = True
+    camera_props.enable_tensors = horizontal_fov
     camera_props.horizontal_fov = 75.0
     local_transform = gymapi.Transform()
     local_transform.p.x = 0
