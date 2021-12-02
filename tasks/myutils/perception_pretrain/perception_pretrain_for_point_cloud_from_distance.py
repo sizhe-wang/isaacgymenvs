@@ -718,52 +718,7 @@ class YumiCube(VecTask):
 
         return depth
 
-    def depth2pointcloud(self, depth):
-        """
-        param dist: The distance data.
-        return: The depth data
-        """
-        if isinstance(depth, list) or hasattr(depth, "shape") and len(depth.shape) > 2:
-            return [self.dist2depth(img) for img in depth]
-        height, width = depth.shape
 
-        mask = np.where(depth > 0)
-        x = mask[1]
-        y = mask[0]
-        normalized_x = -(width * 0.5 - x.astype(np.float32)) / width
-        normalized_y = (height * 0.5 - y.astype(np.float32)) / height
-
-        fx = self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.))
-        fy = self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.))
-
-        world_x = normalized_x * depth[y, x] / fx
-        world_y = normalized_y * depth[y, x] / fy
-        world_z = -depth[y, x]
-
-        ones = np.ones(world_z.shape[0], dtype=np.float32)
-
-        # pointcloud = np.vstack((world_x, world_y, world_z)).T
-        # print(pointcloud.shape)
-        # exit()
-        return np.vstack((world_x, world_y, world_z)).T
-
-        # # Camera intrinsics
-        # cx = (width - 1.) / 2.
-        # cy = (height - 1.) / 2.
-        #
-        # f = width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.))
-        #
-        # # coordinate distances to principal point
-        # xs, ys = np.meshgrid(np.arange(depth.shape[1]), np.arange(depth.shape[0]))
-        # x_opt = np.abs(xs - cx).astype(np.float32) / width
-        # y_opt = np.abs(ys - cy).astype(np.float32) / height
-        #
-        # X = depth * x_opt / f
-        # Y = depth * y_opt / f
-        # pointcloud = np.array([X, Y, depth])
-        # pointcloud.resize(3, 256*256).T
-        # print(pointcloud.shape)
-        return pointcloud
 
 def quat_axis(q, axis=0):
     basis_vec = torch.zeros(q.shape[0], 3, device=q.device)
