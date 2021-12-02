@@ -1,4 +1,4 @@
-# show depth image and point cloud
+# train with point cloud
 import os
 from isaacgym import gymapi
 from isaacgym import gymutil
@@ -29,6 +29,7 @@ from autolab_core import RigidTransform
 from autolab_core import DepthImage, CameraIntrinsics
 from torch.utils.tensorboard import SummaryWriter
 import trimesh
+from skimage.util import random_noise
 
 
 # ========================================================
@@ -71,6 +72,7 @@ class YumiCube(VecTask):
 
         self.real_feature_input = self.cfg["env"]["realFeatureInput"]
         self.have_gravity = self.cfg["env"]["haveGravity"]
+        self.image_mode = self.cfg["env"]["imageMode"]  # 0: depth repeat to 3 channels    1: organized point cloud
 
         self.up_axis = "z"
         self.up_axis_idx = 2
@@ -150,7 +152,8 @@ class YumiCube(VecTask):
         # image
         self.net = ResNet34(num_classes=6).to(self.device)
         self.net.create_optimzer()
-        self.net.create_scheduler(milestones=[100, 200, 300, 500, 700, 1000, 1500, 2000, 3000, 4000], gamma=0.1)
+        # self.net.create_scheduler(milestones=[100, 200, 300, 500, 700, 1000, 1500, 2000, 3000, 4000], gamma=0.1)
+        self.net.create_scheduler(milestones=[50, 100, 300], gamma=0.1)
         self.net.train()
 
         # self.preprocess = transforms.Compose([  # [1]
@@ -477,6 +480,7 @@ class YumiCube(VecTask):
         #
         # get image tensor
         image_tensors = []
+        show_image = False
         for j in range(self.num_envs):
             # for j in self.success_ids:
             _image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], gymapi.IMAGE_DEPTH)
@@ -485,21 +489,31 @@ class YumiCube(VecTask):
             image_tensor = gymtorch.wrap_tensor(_image_tensor)
 
             image_array = image_tensor.cpu().numpy()  # image_array is depth map, not distance map
-            depth_image = DepthImage(image_array)
-            # camera intrinsics
-            camera_intrinsics = CameraIntrinsics(frame='unspecified',
-                                                 fx=self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.)),
-                                                 fy=self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.)),
-                                                 cx=(self.camera_width - 1.0) / 2.,
-                                                 cy=(self.camera_height - 1.0) / 2.,
-                                                 height=self.camera_height,
-                                                 width=self.camera_width,
-                                                 skew=0)
 
-            point_normal = depth_image.point_normal_cloud(camera_intr=camera_intrinsics)
-            point_data = point_normal.point_cloud.data.transpose(1, 0)
+            # cal unorganized point cloud =======================================================================
+            point_data_unorganized = None
+            if show_image:
+                depth_image = DepthImage(image_array)
+                # camera intrinsics
+                camera_intrinsics = CameraIntrinsics(frame='unspecified',
+                                                     fx=self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.)),
+                                                     fy=self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.)),
+                                                     cx=(self.camera_width - 1.0) / 2.,
+                                                     cy=(self.camera_height - 1.0) / 2.,
+                                                     height=self.camera_height,
+                                                     width=self.camera_width,
+                                                     skew=0)
 
-            show_image = True
+                point_normal = depth_image.point_normal_cloud(camera_intr=camera_intrinsics)
+
+                # # TODO: choose point data: whether organized
+                point_data_unorganized = point_normal.point_cloud.data.transpose(1, 0)
+            # ====================================================================================================
+            point_data_organized = self.depth2pointcloud(image_array).reshape(-1, 3)
+            
+            point_data_tensor = torch.Tensor(point_data_organized).to(self.device)  # [65536, 3]
+
+
             if show_image and j == 0:
                 # image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
 
@@ -516,45 +530,35 @@ class YumiCube(VecTask):
                 normalized_depth_image = Image.fromarray(image_array.astype(np.uint8), mode="L")
                 normalized_depth_image.show()
 
-                # depth_image = DepthImage(image_array)
-                # # camera intrinsics
-                # camera_intrinsics = CameraIntrinsics(frame='unspecified',
-                #                                      fx=self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.)),
-                #                                      fy=self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.)),
-                #                                      cx=(self.camera_width - 1.0) / 2.,
-                #                                      cy=(self.camera_height - 1.0) / 2.,
-                #                                      height=self.camera_height,
-                #                                      width=self.camera_width,
-                #                                      skew=0)
-                #
-                # point_normal = depth_image.point_normal_cloud(camera_intr=camera_intrinsics)
-                # point_data = point_normal.point_cloud.data.transpose(1, 0)
+                pc_1 = trimesh.PointCloud(point_data_unorganized, colors=[0, 255, 0])
+                pc_2 = trimesh.PointCloud(point_data_organized, colors=[0, 0, 255])
+                scene = trimesh.Scene([pc_1, pc_2])
+                scene.show()
+                # exit()
 
-                pc = trimesh.PointCloud(point_data, colors=[0, 255, 0])
-                pc.show()
-                # TODO: show point cloud image
-                # print(point_normal.__getitem__(0))
-                # print(point_normal.point_cloud.data)
-                # print(torch.Tensor(point_normal.point_cloud.data).view(3, 256, 256).numpy())
-                # point_cloud_image = Image.fromarray(point_normal.point_cloud.data, mode="RGB")
-                # point_cloud_image.show()
-                # print(point_normal.normal_cloud.data)
+            if self.image_mode == 0:
+                image_tensor = image_tensor.unsqueeze(-1).repeat(1, 1, 3).permute(2, 0, 1).contiguous()
+                image_tensor = torch.where(torch.isinf(image_tensor), torch.zeros_like(image_tensor, device=self.device), image_tensor)
+                image_tensor = torch.where(image_tensor < -10, torch.full_like(image_tensor, -10, device=self.device), image_tensor)
+                # Normalize
+                image_tensor = image_tensor / torch.min(image_tensor)
+                # print(image_tensor)
+                # print(image_tensor.shape)
 
-            image_tensor = image_tensor.unsqueeze(-1).repeat(1, 1, 3).permute(2, 0, 1).contiguous()
-            image_tensor = torch.where(torch.isinf(image_tensor), torch.zeros_like(image_tensor, device=self.device), image_tensor)
-            image_tensor = torch.where(image_tensor < -10, torch.full_like(image_tensor, -10, device=self.device), image_tensor)
-            # Normalize
-            image_tensor = image_tensor / torch.min(image_tensor)
-            # print(image_tensor)
-            # print(image_tensor.shape)
+                image_tensors.append(image_tensor)
 
-            image_tensors.append(image_tensor)
+            elif self.image_mode == 1:
+                point_data_tensor = point_data_tensor.transpose(1, 0).view(3, self.camera_height, self.camera_width).contiguous()
+                image_tensors.append(point_data_tensor)
 
         self.gym.end_access_image_tensors(self.sim)
 
         image_tensors = torch.stack(image_tensors)
-        print("image_tensors", image_tensors.shape)
+
+        print("min", torch.min(image_tensors))
+        print("max", torch.max(image_tensors))
         exit()
+
         # Normalize
         # image_tensors = image_tensors / 255.
 
@@ -718,7 +722,61 @@ class YumiCube(VecTask):
 
         return depth
 
+    def depth2pointcloud(self, depth):
+        """
+        param dist: The distance data.
+        return: The depth data
+        """
+        if isinstance(depth, list) or hasattr(depth, "shape") and len(depth.shape) > 2:
+            return [self.dist2depth(img) for img in depth]
+        height, width = depth.shape
 
+        # mask = np.where(depth > 0)
+        # x = mask[1]
+        # y = mask[0]
+        # normalized_x = -(width * 0.5 - x.astype(np.float32)) / width
+        # normalized_y = (height * 0.5 - y.astype(np.float32)) / height
+        #
+        fx = self.camera_width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.))
+        fy = self.camera_height / (2 * np.tan(np.deg2rad(self.camera_vertical_fov) / 2.))
+        #
+        # world_x = normalized_x * depth[y, x] / fx
+        # world_y = normalized_y * depth[y, x] / fy
+        # world_z = -depth[y, x]
+        #
+        # ones = np.ones(world_z.shape[0], dtype=np.float32)
+        #
+        # # pointcloud = np.vstack((world_x, world_y, world_z)).T
+        # # print(pointcloud.shape)
+        # # exit()
+        # return np.vstack((world_x, world_y, world_z)).T
+
+        # Camera intrinsics
+        cx = (width - 1.) / 2.
+        cy = (height - 1.) / 2.
+
+        indices = np.indices((height, width), dtype=np.float32).transpose(1,2,0)
+        indices[..., 0] = np.flipud(
+            indices[..., 0])  # pixel indices start at top-left corner. for these equations, it starts at bottom-left
+        z_e = depth
+        x_e = (indices[..., 1] - cx) * z_e / fx
+        y_e = -(indices[..., 0] - cy) * z_e / fy
+        xyz_img = np.stack([x_e, y_e, z_e], axis=-1)  # Shape: [H x W x 3]
+
+        # f = width / (2 * np.tan(np.deg2rad(self.camera_horizontal_fov) / 2.))
+        #
+        # # coordinate distances to principal point
+        # xs, ys = np.meshgrid(np.arange(depth.shape[1]), np.arange(depth.shape[0]))
+        # x_opt = np.abs(xs - cx).astype(np.float32) / width
+        # y_opt = np.abs(ys - cy).astype(np.float32) / height
+        #
+        # X = depth * x_opt / f
+        # Y = depth * y_opt / f
+        # pointcloud = np.array([X, Y, depth])
+        # pointcloud = np.reshape(pointcloud, (3, 256*256)).transpose(1, 0)
+        xyz_img = xyz_img
+
+        return xyz_img
 
 def quat_axis(q, axis=0):
     basis_vec = torch.zeros(q.shape[0], 3, device=q.device)
@@ -749,7 +807,7 @@ if __name__ == "__main__":
     # while not yumi.gym.query_viewer_has_closed(yumi.viewer):
     num_images = 500000
     # for i in range(num_images//yumi.num_envs + 1):
-    for i in range(5000):
+    for i in range(600):
 
         # time_start = time.time()
         # step the physics
@@ -763,7 +821,7 @@ if __name__ == "__main__":
         yumi.compute_observations(i)
         # # ===================================================================
 
-        print("run%d" % i, end="\t")
+
         # print('time cost is :', time.time() - time_start)
         if not yumi.headless:
             # render the viewer
@@ -783,6 +841,6 @@ if __name__ == "__main__":
     # save module
     if not os.path.exists("YumiDepth/nn"):
         os.mkdir("YumiDepth/nn")
-    torch.save(yumi.net.state_dict(), "YumiDepth/nn/perception_pretrain_resnet18_classes6.pth")
+    torch.save(yumi.net.state_dict(), "YumiDepth/nn/perception_pretrain_organized_point_cloud.pth")
 
 

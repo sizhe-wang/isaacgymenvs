@@ -48,6 +48,7 @@ class ResNet(nn.Module):
         # loss computation
         loss = self.compute_loss(output, target)
         self.writer.add_scalar("loss", loss, global_step=i)
+        print("run%d" % i, end="\t")
         print("loss: ", loss.item())
         self._optimizer.zero_grad()
         loss.backward()
