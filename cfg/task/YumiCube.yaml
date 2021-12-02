@@ -137,7 +137,8 @@ env:
   imageMode: 1  # 0: depth repeat to 3 channels    1: organized point cloud   2: RGB
   addNoiseToImage: False
   trainPerception: True
-  perceptionModlePath: "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
+#  perceptionModlePath: "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
+  perceptionModlePath: "tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
 
   asset:
     assetRoot: "../../assets"
