@@ -20,11 +20,17 @@ class ResNet(nn.Module):
         # self.linear = nn.Linear(512 * expansion, num_classes)
         self.lr = learning_rate
         # tensorboard
-        if not os.path.exists("YumiDepth"):
-            os.mkdir("YumiDepth")
-        if not os.path.exists("YumiDepth/summaries"):
-            os.mkdir("YumiDepth/summaries")
-        self.writer = SummaryWriter('YumiDepth/summaries')
+        # if not os.path.exists("YumiDepth"):
+        #     os.mkdir("YumiDepth")
+        # if not os.path.exists("YumiDepth/summaries"):
+        #     os.mkdir("YumiDepth/summaries")
+        # self.writer = SummaryWriter('YumiDepth/summaries')
+
+        if not os.path.exists("YumiDepthTest"):
+            os.mkdir("YumiDepthTest")
+        if not os.path.exists("YumiDepthTest/summaries"):
+            os.mkdir("YumiDepthTest/summaries")
+        self.writer = SummaryWriter('YumiDepthTest/summaries')
 
 
     def create_scheduler(self, milestones=None, gamma=None):
@@ -66,9 +72,19 @@ class ResNet(nn.Module):
 
         return output
 
-    def inference_network(self, input_data=None, target=None):
+    def inference_network(self, input_data=None, target=None, i=0):
         output = self.forward(input_data)
         # loss computation
+        loss = self.compute_loss(output, target)
+        self.writer.add_scalar("loss", loss, global_step=i)
+        print("run%d" % i, end="\t")
+        print("loss: ", loss.item())
+        self.writer.add_scalar("diff/x", (output - target)[0, 0].data, global_step=i)
+        self.writer.add_scalar("diff/y", (output - target)[0, 1].data, global_step=i)
+        self.writer.add_scalar("diff/z", (output - target)[0, 2].data, global_step=i)
+        self.writer.add_scalar("diff/rx", (output - target)[0, 3].data, global_step=i)
+        self.writer.add_scalar("diff/ry", (output - target)[0, 4].data, global_step=i)
+        self.writer.add_scalar("diff/rz", (output - target)[0, 5].data, global_step=i)
         return output
 
     def forward(self, x):

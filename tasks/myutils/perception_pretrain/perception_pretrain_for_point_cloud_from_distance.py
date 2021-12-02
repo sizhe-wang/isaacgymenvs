@@ -1,3 +1,4 @@
+# main perception pretrain module
 # train with point cloud
 import os
 from isaacgym import gymapi
@@ -73,6 +74,7 @@ class YumiCube(VecTask):
         self.real_feature_input = self.cfg["env"]["realFeatureInput"]
         self.have_gravity = self.cfg["env"]["haveGravity"]
         self.image_mode = self.cfg["env"]["imageMode"]  # 0: depth repeat to 3 channels    1: organized point cloud
+        self.add_noise_to_image = self.cfg["env"]["addNoiseToImage"]
 
         self.up_axis = "z"
         self.up_axis_idx = 2
@@ -282,7 +284,7 @@ class YumiCube(VecTask):
             self.default_yumi_states.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z,
                                              hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w,
                                              0, 0, 0, 0, 0, 0])
-            # exit()
+
             self.init_pos_list.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z])
             self.init_rot_list.append([hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w])
             # get global index of hand in rigid body state tensor
@@ -487,9 +489,12 @@ class YumiCube(VecTask):
 
             # H * W * 3
             image_tensor = gymtorch.wrap_tensor(_image_tensor)
-
             image_array = image_tensor.cpu().numpy()  # image_array is depth map, not distance map
 
+            # add noise to image
+            if self.add_noise_to_image:
+                image_array = random_noise(image_array, mode='gaussian', mean=0, var=0.0001, clip=False)
+                image_tensor = torch.Tensor(image_array).to(self.device)
             # cal unorganized point cloud =======================================================================
             point_data_unorganized = None
             if show_image:
@@ -555,9 +560,8 @@ class YumiCube(VecTask):
 
         image_tensors = torch.stack(image_tensors)
 
-        print("min", torch.min(image_tensors))
-        print("max", torch.max(image_tensors))
-        exit()
+        # print("min", torch.min(image_tensors))
+        # print("max", torch.max(image_tensors))
 
         # Normalize
         # image_tensors = image_tensors / 255.

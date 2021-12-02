@@ -45,6 +45,7 @@ env:
   # 2: obs: perception output + gripper states, perception: pretrained Resnet34
   # 3: obs: perception output + gripper states, perception: not pretrained Resnet18, train perception and control together
   imageMode: 1  # 0: depth repeat to 3 channels    1: organized point cloud
+  addNoiseToImage: False
 
   asset:
     assetRoot: "../../../../assets/"
