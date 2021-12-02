@@ -27,7 +27,7 @@ from torchvision import datasets, transforms
 from torchvision import models
 import time
 from torchgeometry.core import conversions
-from isaacgymenvs.tasks.myutils.perception_pretrain.resent_for_perception_pretrain import ResNet18, ResNet34
+from isaacgymenvs.tasks.myutils.resnet_new import resnet18, resnet34
 from autolab_core import RigidTransform
 from autolab_core import DepthImage, CameraIntrinsics
 from torch.utils.tensorboard import SummaryWriter
@@ -88,7 +88,7 @@ class YumiCube(VecTask):
         self.dt = 1 / 60.
 
         if self.real_feature_input:
-            self._num_obs = 8 #517
+            self._num_obs = 517
         else:
             self._num_obs = 11
         self._num_acts = 5
@@ -172,11 +172,12 @@ class YumiCube(VecTask):
                 self.net.eval()
             else:
                 # print('image mode true1')
-                self.net = ResNet34(num_classes=6).to(self.device)
+                self.net = resnet34(num_classes=3).to(self.device)
                 if self.train_perception:
-                    self.net.load_state_dict(torch.load(self.perception_modle_path))
+                    # self.net.load_state_dict(torch.load(self.perception_modle_path))
+                    self.net.set_learning_rate(1e-4)
                     self.net.create_optimzer()
-                    self.net.create_scheduler(milestones=[50, 100, 300], gamma=0.1)
+                    self.net.create_scheduler(milestones=[1500], gamma=0.1)
                     self.net.train()
                 else:
                     self.net.load_state_dict(torch.load(self.perception_modle_path))
@@ -626,18 +627,18 @@ class YumiCube(VecTask):
             else:
                 # print('mode = 3')
                 # print('image mode true6')
-                input_data = image_tensors.view(-1, 3, 256, 256).clone().detach()
+                input_data = image_tensors.view(-1, 3, 256, 256).detach()
 
                 # target: object pos and rz
-                target = cube_state.clone().detach()
+                target = cube_xyz.detach()
                 if self.train_perception:
-                    perception_output = self.net.train_network(input_data, target, i=self.step_counter).detach()
+                    perception_output, feature = self.net.train_network(input_data, target, i=self.step_counter)
                 else:
-                    perception_output = self.net.inference_network(input_data, target, i=self.step_counter).detach()
+                    perception_output, feature = self.net.inference_network(input_data, target, i=self.step_counter)
                 # perception_output = self.net.inference_network(input_data, target).detach()
 
                 # TODO: [x, y, z] ---> [512 dim]
-                self.obs_buf = torch.cat([perception_output[:, :3], gripper_state], dim=-1)
+                self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
 
         if not self.real_feature_input:
             # print('image mode false')
