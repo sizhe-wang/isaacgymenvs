@@ -147,7 +147,7 @@ class YumiCube(VecTask):
         self.yumi_dof_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device)
 
         # image
-        self.net = ResNet34(num_classes=6).to(self.device)
+        self.net = ResNet18(num_classes=6).to(self.device)
         self.net.create_optimzer()
         self.net.create_scheduler(milestones=[100, 200, 300, 700, 1500, 3500, 6000], gamma=0.1)
         self.net.train()

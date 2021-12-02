@@ -49,7 +49,6 @@ env:
 
   asset:
     assetRoot: "../../../../assets/"
-
     assetFileNameYumi: "urdf/yumi_description/urdf/yumi_only_gripper.urdf"
 
   # camera config

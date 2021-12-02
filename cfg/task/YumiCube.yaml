@@ -124,15 +124,20 @@ env:
   grippperActionsScale: 0.0025
   liftRewardScale: 7.5
   upTimes: 20
-  realFeatureInput: False   # True: resnet, False: object vector
-  pretrained: True   # True: perception module--->pretrained resnet34  False: perception mudule--->resnet18
+  realFeatureInput: True   # True: resnet, False: object vector
+  pretrained: False   # True: perception module--->pretrained resnet34  False: perception mudule--->resnet18
   cubeRandom: True
   gripperRandom: True
   extrinsicRotations: True
+  haveGravity: True
   mode: 1
   # 1: obs: stats, without perception
   # 2: obs: perception output + gripper states, perception: pretrained Resnet34
   # 3: obs: perception output + gripper states, perception: not pretrained Resnet18, train perception and control together
+  imageMode: 1  # 0: depth repeat to 3 channels    1: organized point cloud   2: RGB
+  addNoiseToImage: False
+  trainPerception: True
+  perceptionModlePath: "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
 
   asset:
     assetRoot: "../../assets"
@@ -144,9 +149,10 @@ env:
     # 分辨率
     width: 256 #256
     height: 256  #256
+    horizontal_fov: 50.0
 
   # set to True if you use camera sensors in the environment
-  enableCameraSensors: False  # TODO:important to set "True" if use camreas!!
+  enableCameraSensors: True  # TODO:important to set "True" if use camreas!!
 
 sim:
   dt: 0.0166 # 1/60

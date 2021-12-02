@@ -40,7 +40,8 @@ from isaacgymenvs.tasks.quadcopter import Quadcopter
 from isaacgymenvs.tasks.shadow_hand import ShadowHand
 from isaacgymenvs.tasks.trifinger import Trifinger
 # from isaacgymenvs.tasks.yumi_cube import YumiCube
-from isaacgymenvs.tasks.yumi_gripper_cube import YumiCube
+# from isaacgymenvs.tasks.yumi_gripper_cube import YumiCube
+from isaacgymenvs.tasks.yumi_gripper_cube_load_pretrain import YumiCube
 
 # Mappings from strings to environments
 isaacgym_task_map = {
