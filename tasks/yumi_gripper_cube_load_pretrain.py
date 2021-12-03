@@ -170,27 +170,27 @@ class YumiCube(VecTask):
                 self.net = models.resnet34(pretrained=True)
                 self.net = torch.nn.Sequential(*(list(self.net.children())[:-1])).to(self.device)
                 self.net.eval()
-            else:
-                # print('image mode true1')
-                self.net = resnet34(num_classes=3).to(self.device)
-                if self.train_perception:
-                    # self.net.load_state_dict(torch.load(self.perception_modle_path))
-                    self.net.set_learning_rate(1e-4)
-                    self.net.create_optimzer()
-                    self.net.create_scheduler(milestones=[1500], gamma=0.1)
-                    self.net.train()
-                else:
-                    self.net.load_state_dict(torch.load(self.perception_modle_path))
-                    self.net.eval()
-
-            self.preprocess = transforms.Compose([  # [1]
-                # transforms.Resize(472),                    #[2]
-                # transforms.CenterCrop(472),                #[3]
-                # transforms.ToTensor(),                     #[4]
-                transforms.Normalize(  # [5]
-                    mean=[0.485, 0.456, 0.406],  # [6]
-                    std=[0.229, 0.224, 0.225]  # [7]
-                )])
+            # else:
+            #     # print('image mode true1')
+            #     self.net = resnet34(num_classes=3).to(self.device)
+            #     if self.train_perception:
+            #         # self.net.load_state_dict(torch.load(self.perception_modle_path))
+            #         self.net.set_learning_rate(1e-4)
+            #         self.net.create_optimzer()
+            #         self.net.create_scheduler(milestones=[1500], gamma=0.1)
+            #         self.net.train()
+            #     else:
+            #         self.net.load_state_dict(torch.load(self.perception_modle_path))
+            #         self.net.eval()
+            #
+            # self.preprocess = transforms.Compose([  # [1]
+            #     # transforms.Resize(472),                    #[2]
+            #     # transforms.CenterCrop(472),                #[3]
+            #     # transforms.ToTensor(),                     #[4]
+            #     transforms.Normalize(  # [5]
+            #         mean=[0.485, 0.456, 0.406],  # [6]
+            #         std=[0.229, 0.224, 0.225]  # [7]
+            #     )])
             self.render_img = True
         else:
             self.render_img = False
@@ -625,21 +625,21 @@ class YumiCube(VecTask):
                 self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
                 # print("obs", self.obs_buf[0])
             else:
-                # print('mode = 3')
-                # print('image mode true6')
-                input_data = image_tensors.view(-1, 3, 256, 256).detach()
-
-                # target: object pos and rz
-                target = cube_xyz.detach()
-                if self.train_perception:
-                    perception_output, feature = self.net.train_network(input_data, target, i=self.step_counter)
-                else:
-                    perception_output, feature = self.net.inference_network(input_data, target, i=self.step_counter)
-                # perception_output = self.net.inference_network(input_data, target).detach()
+                # # print('mode = 3')
+                # # print('image mode true6')
+                # input_data = image_tensors.view(-1, 3, 256, 256).detach()
+                #
+                # # target: object pos and rz
+                # target = cube_xyz.detach()
+                # if self.train_perception:
+                #     perception_output, feature = self.net.train_network(input_data, target, i=self.step_counter)
+                # else:
+                #     perception_output, feature = self.net.inference_network(input_data, target, i=self.step_counter)
+                # # perception_output = self.net.inference_network(input_data, target).detach()
 
                 # TODO: [x, y, z] ---> [512 dim]
                 # self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
-                self.obs_buf = input_data
+                self.obs_buf = image_tensors.view(-1, 3, 256, 256).detach()
 
         if not self.real_feature_input:
             # print('image mode false')
