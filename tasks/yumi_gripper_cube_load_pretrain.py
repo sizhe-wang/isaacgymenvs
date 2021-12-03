@@ -88,7 +88,7 @@ class YumiCube(VecTask):
         self.dt = 1 / 60.
 
         if self.real_feature_input:
-            self._num_obs = 517
+            self._num_obs = (3, 256, 256)
         else:
             self._num_obs = 11
         self._num_acts = 5
@@ -638,13 +638,15 @@ class YumiCube(VecTask):
                 # perception_output = self.net.inference_network(input_data, target).detach()
 
                 # TODO: [x, y, z] ---> [512 dim]
-                self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
+                # self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
+                self.obs_buf = input_data
 
         if not self.real_feature_input:
             # print('image mode false')
 
             # print('mode = 1')
             self.obs_buf = torch.cat([cube_state, gripper_state], dim=-1)
+            print("run %d" % self.step_counter)
         self.step_counter += 1
         return self.obs_buf
 

@@ -7,7 +7,7 @@ params:
     name: continuous_a2c_logstd   # discrete_a2c, multi_discrete_a2c, continuous_a2c, soft_actor_critic
 
   network:
-    name: resnet_actor_critic  # resnet_actor_critic, rnd_curiosity, soft_actor_critic,
+    name: actor_critic  # resnet_actor_critic, rnd_curiosity, soft_actor_critic,
     separate: False
 
     space:
@@ -20,39 +20,39 @@ params:
           name: const_initializer
           val: 0
         fixed_sigma: True
-
-#try to add cnn
-#在实例化Network()的时候, **kwargs传进来的:
-#  input_shape=
-#  actions_num=
-#  value_size=1(default)
-#  num_seqs=1(default)
-
+'''
+try to add cnn
+在实例化Network()的时候, **kwargs传进来的:
+  input_shape=
+  actions_num=
+  value_size=1(default)
+  num_seqs=1(default)
+'''
     cnn:
-#      type:   # 'conv2d', 'coord_conv2d', 'conv1d'
-#      convs:
-#        filters:
-#        kernel_size:
-#        strides:
-#        padding:
-#      activation:
-#      norm_func_name:   # 'layer_norm', 'batch_norm'
-      conv_depths: [64, 128, 256, 512]  # [xx, xx, xx]
-#    rnn:
-#      units:
-#      layers:
-#      name:
-#      layer_norm:   # default False
-#      before_mlp:   # default False
-#      concat_input:   # default False
-#    space:
-#      multi_discrete:   # default False
-#      discrete:   # default False
-#      continuous:   # default False
-#
-#    central_value:    # default False
-#    joint_obs_actions:    # default None
-#    separate:   # default False
+      type:   # 'conv2d', 'coord_conv2d', 'conv1d'
+      convs:
+        filters:
+        kernel_size:
+        strides:
+        padding:
+      activation:
+      norm_func_name:   # 'layer_norm', 'batch_norm'
+      conv_depths:  # [xx, xx, xx]
+    rnn:
+      units:
+      layers:
+      name:
+      layer_norm:   # default False
+      before_mlp:   # default False
+      concat_input:   # default False
+    space:
+      multi_discrete:   # default False
+      discrete:   # default False
+      continuous:   # default False
+
+    central_value:    # default False
+    joint_obs_actions:    # default None
+    separate:   # default False
 
     mlp:
       units: [256, 128, 64]
@@ -95,7 +95,7 @@ params:
     truncate_grads: True
     e_clip: 0.2
     horizon_length: 16  # 16
-    minibatch_size: 256  # 8192
+    minibatch_size: 8192  # 8192
     mini_epochs: 8
     critic_coef: 4
     clip_value: True
