@@ -77,8 +77,7 @@ class Env(ABC):
         self.headless = headless
 
         enable_camera_sensors = config["env"]["enableCameraSensors"]    # config.get("enableCameraSensors", False)
-        # print("enableCameraSensors:", enable_camera_sensors)
-        # print(config["env"]["enableCameraSensors"])
+
         self.graphics_device_id = graphics_device_id
         if enable_camera_sensors == False and self.headless == True:
             self.graphics_device_id = -1

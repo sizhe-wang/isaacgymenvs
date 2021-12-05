@@ -38,6 +38,7 @@ def create_camera(gym, env, location, lookat, width, height, horizontal_fov=50.0
     return camera_handle
 
 
+# TODO：config gymapi.CameraFollowMode: FOLLOW POSITION or FOLLOW TRANSFORM
 def create_camera_attach(gym, env, width, height, body_handle, horizontal_fov=75.0):
     camera_props = gymapi.CameraProperties()
     camera_props.width = width
