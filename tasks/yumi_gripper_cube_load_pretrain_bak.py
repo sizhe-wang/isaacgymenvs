@@ -78,11 +78,24 @@ class YumiCube(VecTask):
         self.image_mode = self.cfg["env"]["imageMode"]  # 0: depth repeat to 3 channels    1: organized point cloud
         self.add_noise_to_image = self.cfg["env"]["addNoiseToImage"]
         self.train_perception = self.cfg["env"]["trainPerception"]
-        self.load_perception = self.cfg["env"]["loadPerception"]
         self.perception_modle_path = self.cfg["env"]["perceptionModlePath"]
-        self.showRGB = self.cfg["env"]["showRGB"]
 
         self.step_counter = 0
+
+        self.up_axis = "z"
+        self.up_axis_idx = 2
+
+        self.dt = 1 / 60.
+
+        if self.real_feature_input:
+            self._num_obs = (3, 256, 256)
+        else:
+            self._num_obs = 11
+        self._num_acts = 5
+
+        self.cfg["env"]["numObservations"] = self._num_obs
+        self.cfg["env"]["numActions"] = self._num_acts
+        # add ===================================================================
         # table
         self.table_dims = gymapi.Vec3(0.7, 0.7, 0.1)
         # 关于相机
@@ -93,25 +106,6 @@ class YumiCube(VecTask):
         self.camera_vertical_fov = self.camera_height / self.camera_width * self.camera_horizontal_fov
         self.camera_location = gymapi.Vec3(0.35, 0.65, 0.75)
         self.camera_lookat = gymapi.Vec3(0.35, 0., self.table_dims.z)
-
-        self.up_axis = "z"
-        self.up_axis_idx = 2
-
-        self.dt = 1 / 60.
-
-        if self.real_feature_input:
-            if self.image_mode < 3:
-                self._num_obs = (3, self.camera_height, self.camera_width)
-            elif self.image_mode == 3:
-                self._num_obs = (1, self.camera_height, self.camera_width)
-        else:
-            self._num_obs = 11
-        self._num_acts = 5
-
-        self.cfg["env"]["numObservations"] = self._num_obs
-        self.cfg["env"]["numActions"] = self._num_acts
-        # add ===================================================================
-
 
         # cube
         self.cube_size = 0.035
@@ -145,7 +139,7 @@ class YumiCube(VecTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
-        self.yumi_default_dof_pos = to_torch([0, 0.10, 0., 0, 0.025, 0.025], device=self.device)
+        self.yumi_default_dof_pos = to_torch([0, 0, 0, 0, 0.025, 0.025], device=self.device)
 
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         # 2: 0:position, 1:velocity
@@ -176,27 +170,27 @@ class YumiCube(VecTask):
                 self.net = models.resnet34(pretrained=True)
                 self.net = torch.nn.Sequential(*(list(self.net.children())[:-1])).to(self.device)
                 self.net.eval()
-            else:
-                # print('image mode true1')
-                self.net = resnet34(num_classes=3).to(self.device)
-                if self.train_perception:
-                    # self.net.load_state_dict(torch.load(self.perception_modle_path))
-                    self.net.set_learning_rate(1e-4)
-                    self.net.create_optimzer()
-                    self.net.create_scheduler(milestones=[1500], gamma=0.1)
-                    self.net.train()
-                elif self.load_perception:
-                    self.net.load_state_dict(torch.load(self.perception_modle_path))
-                    self.net.eval()
-            if self.image_mode == 2:
-                self.preprocess = transforms.Compose([  # [1]
-                    # transforms.Resize(472),                    #[2]
-                    # transforms.CenterCrop(472),                #[3]
-                    # transforms.ToTensor(),                     #[4]
-                    transforms.Normalize(  # [5]
-                        mean=[0.485, 0.456, 0.406],  # [6]
-                        std=[0.229, 0.224, 0.225]  # [7]
-                    )])
+            # else:
+            #     # print('image mode true1')
+            #     self.net = resnet34(num_classes=3).to(self.device)
+            #     if self.train_perception:
+            #         # self.net.load_state_dict(torch.load(self.perception_modle_path))
+            #         self.net.set_learning_rate(1e-4)
+            #         self.net.create_optimzer()
+            #         self.net.create_scheduler(milestones=[1500], gamma=0.1)
+            #         self.net.train()
+            #     else:
+            #         self.net.load_state_dict(torch.load(self.perception_modle_path))
+            #         self.net.eval()
+            #
+            # self.preprocess = transforms.Compose([  # [1]
+            #     # transforms.Resize(472),                    #[2]
+            #     # transforms.CenterCrop(472),                #[3]
+            #     # transforms.ToTensor(),                     #[4]
+            #     transforms.Normalize(  # [5]
+            #         mean=[0.485, 0.456, 0.406],  # [6]
+            #         std=[0.229, 0.224, 0.225]  # [7]
+            #     )])
             self.render_img = True
         else:
             self.render_img = False
@@ -338,8 +332,8 @@ class YumiCube(VecTask):
             # camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat,
             #                                            self.camera_width, self.camera_height)
 
-            # camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat, self.camera_width, self.camera_height, self.camera_horizontal_fov)
-            camera_actor = create_assets.create_camera_attach(self.gym, env_ptr, self.camera_width, self.camera_height, hand_handle, self.camera_horizontal_fov)
+            camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat, self.camera_width, self.camera_height, self.camera_horizontal_fov)
+
             self.gym.end_aggregate(env_ptr)
             self.envs.append(env_ptr)
             self.yumis.append(yumi_actor)
@@ -537,24 +531,17 @@ class YumiCube(VecTask):
                 image_kind = gymapi.IMAGE_COLOR if self.image_mode == 2 else gymapi.IMAGE_DEPTH
                 _image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], image_kind)
 
-                # H * W * channel
-                image_tensor = gymtorch.wrap_tensor(_image_tensor)  # image_array is depth map, not distance map
-
-                if self.showRGB and j == 0:
-                    _show_image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], gymapi.IMAGE_COLOR)
-                    image_array = gymtorch.wrap_tensor(_show_image_tensor)[:, :, :3].cpu().numpy()
-                    image = Image.fromarray(image_array.astype(np.uint8), mode="RGB")
-                    image.show()
+                # H * W * 3
+                image_tensor = gymtorch.wrap_tensor(_image_tensor)
+                image_array = image_tensor.cpu().numpy()  # image_array is depth map, not distance map
 
                 # add noise to image
                 if self.add_noise_to_image:
-                    image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
                     image_array = random_noise(image_array, mode='gaussian', mean=0, var=0.0001, clip=False)
                     image_tensor = torch.Tensor(image_array).to(self.device)
                 # cal unorganized point cloud =======================================================================
                 point_data_unorganized = None
                 if show_image:
-                    image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
                     depth_image = DepthImage(image_array)
                     # camera intrinsics
                     camera_intrinsics = CameraIntrinsics(frame='unspecified',
@@ -570,10 +557,13 @@ class YumiCube(VecTask):
 
                     # # TODO: choose point data: whether organized
                     point_data_unorganized = point_normal.point_cloud.data.transpose(1, 0)
-                    point_data_organized = self.depth2pointcloud(image_array).reshape(-1, 3)
+                # cal organized point cloud =======================================================================
+                # print('image mode true4')
+                point_data_organized = self.depth2pointcloud(image_array).reshape(-1, 3)
+                point_data_tensor = torch.Tensor(point_data_organized).to(self.device)  # [65536, 3]
                 # show image =======================================================================
                 if show_image and j == 0:
-                    image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
+                    # image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
 
                     # -inf implies no depth value, set it to zero. output will be black.
                     image_array[image_array == -np.inf] = 0
@@ -587,8 +577,6 @@ class YumiCube(VecTask):
                     # Convert to a pillow image and show
                     normalized_depth_image = Image.fromarray(image_array.astype(np.uint8), mode="L")
                     normalized_depth_image.show()
-
-                    point_data_organized = self.depth2pointcloud(image_array).reshape(-1, 3)
 
                     pc_1 = trimesh.PointCloud(point_data_unorganized, colors=[0, 255, 0])
                     pc_2 = trimesh.PointCloud(point_data_organized, colors=[0, 0, 255])
@@ -611,20 +599,12 @@ class YumiCube(VecTask):
 
                 elif self.image_mode == 1:  # 1: organized point cloud
                     # print('image mode true5')
-                    # cal organized point cloud
-                    image_array = image_tensor.cpu().numpy()  # image_array is depth map, not distance map
-                    point_data_organized = self.depth2pointcloud(image_array).reshape(-1, 3)
-                    point_data_tensor = torch.Tensor(point_data_organized).to(self.device)  # [65536, 3]
                     point_data_tensor = point_data_tensor.transpose(1, 0).view(3, self.camera_height, self.camera_width).contiguous()
                     image_tensors.append(point_data_tensor)
 
                 elif self.image_mode == 2:  # 2: RGB
                     image_tensor = image_tensor[:, :, :3].permute(2, 0, 1).contiguous()
                     image_tensors.append(image_tensor)
-
-                elif self.image_mode == 3:  # 3: depth with one channel
-                    image_tensors.append(image_tensor)
-
             # end access image tensor and stack them all together======================================================
             self.gym.end_access_image_tensors(self.sim)
             image_tensors = torch.stack(image_tensors)
@@ -637,38 +617,29 @@ class YumiCube(VecTask):
                 image_tensors = image_tensors / 255.
                 image_tensors = self.preprocess(image_tensors)
 
-            # # perception network =====================================================================================
-            # if self.pretrained:     # pretrained Resnet (not mine)
-            #     # print('mode = 2')
-            #     if self.image_mode < 3:
-            #         perception_output = self.net(image_tensors.view(-1, 3, self.camera_height, self.camera_width)).squeeze()
-            #         # torch.Size([num_envs, 512])
-            #         self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
-            #         # print("obs", self.obs_buf[0])
-            #     elif self.image_mode == 3:
-            #         perception_output = self.net(image_tensors.view(-1, 1, self.camera_height, self.camera_width)).squeeze()
-            #         self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
-            #
-            # else:
-            #     # print('mode = 3')
-            #     # print('image mode true6')
-            #     input_data = image_tensors.view(-1, 3, self.camera_height, self.camera_width).detach() if self.image_mode < 3 else image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
-            #
-            #     # target: object pos and rz
-            #     target = cube_xyz.detach()
-            #     if self.train_perception:
-            #         perception_output, feature = self.net.train_network(input_data, target, i=self.step_counter)
-            #     else:
-            #         perception_output, feature = self.net.inference_network(input_data, target, i=self.step_counter)
-            #     # perception_output = self.net.inference_network(input_data, target).detach()
+            # perception network =====================================================================================
+            if self.pretrained:     # pretrained Resnet (not mine)
+                # print('mode = 2')
+                perception_output = self.net(image_tensors.view(-1, 3, 256, 256)).squeeze()
+                # torch.Size([num_envs, 512])
+                self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
+                # print("obs", self.obs_buf[0])
+            else:
+                # # print('mode = 3')
+                # # print('image mode true6')
+                # input_data = image_tensors.view(-1, 3, 256, 256).detach()
+                #
+                # # target: object pos and rz
+                # target = cube_xyz.detach()
+                # if self.train_perception:
+                #     perception_output, feature = self.net.train_network(input_data, target, i=self.step_counter)
+                # else:
+                #     perception_output, feature = self.net.inference_network(input_data, target, i=self.step_counter)
+                # # perception_output = self.net.inference_network(input_data, target).detach()
 
                 # TODO: [x, y, z] ---> [512 dim]
                 # self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
-            if self.image_mode < 3:
-                self.obs_buf = image_tensors.view(-1, 3, self.camera_height, self.camera_width).detach()
-
-            elif self.image_mode == 3:  # 3: depth with one channel
-                self.obs_buf = image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
+                self.obs_buf = image_tensors.view(-1, 3, 256, 256).detach()
 
         if not self.real_feature_input:
             # print('image mode false')
@@ -683,7 +654,7 @@ class YumiCube(VecTask):
         # reset yumi
         # ==========================================================================================
         pos = tensor_clamp(
-            self.yumi_default_dof_pos.unsqueeze(0) + 0.0 * (
+            self.yumi_default_dof_pos.unsqueeze(0) + 0.2 * (
                         torch.rand((len(env_ids), self.num_yumi_dofs), device=self.device) - 0.5),
             self.yumi_dof_lower_limits, self.yumi_dof_upper_limits) if self.gripper_random else tensor_clamp(
             self.yumi_default_dof_pos.unsqueeze(0),

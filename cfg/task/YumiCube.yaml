@@ -134,11 +134,15 @@ env:
   # 1: obs: stats, without perception
   # 2: obs: perception output + gripper states, perception: pretrained Resnet34
   # 3: obs: perception output + gripper states, perception: not pretrained Resnet18, train perception and control together
-  imageMode: 1  # 0: depth repeat to 3 channels    1: organized point cloud   2: RGB
+  imageMode: 3  # 0: depth repeat to 3 channels    1: organized point cloud   2: RGB      3: depth with one channel
   addNoiseToImage: False
-  trainPerception: True
+  trainPerception: False
+  loadPerception: False
 #  perceptionModlePath: "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
   perceptionModlePath: "tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
+  showRGB: True
+  showDepth: False
+  showPointCloud: False
 
   asset:
     assetRoot: "../../assets"
@@ -148,9 +152,9 @@ env:
   camera:
     same: True  # 相机在所有环境中的位姿是否相同
     # 分辨率
-    width: 256 #256
-    height: 256  #256
-    horizontal_fov: 50.0
+    width: 128 #256
+    height: 128  #256
+    horizontal_fov: 65.0
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: True  # TODO:important to set "True" if use camreas!!

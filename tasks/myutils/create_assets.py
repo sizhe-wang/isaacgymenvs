@@ -43,12 +43,13 @@ def create_camera_attach(gym, env, width, height, body_handle, horizontal_fov=75
     camera_props = gymapi.CameraProperties()
     camera_props.width = width
     camera_props.height = height
-    camera_props.enable_tensors = horizontal_fov
-    camera_props.horizontal_fov = 75.0
+    camera_props.enable_tensors = True
+    camera_props.horizontal_fov = horizontal_fov
+    camera_props.use_collision_geometry = True
     local_transform = gymapi.Transform()
     local_transform.p.x = 0
-    local_transform.p.y = -0.04
-    local_transform.p.z = 0.05
+    local_transform.p.y = -0.06
+    local_transform.p.z = 0.
     local_transform.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 1, 0), np.radians(-90.0))
     camera_handle = gym.create_camera_sensor(env, camera_props)
     gym.attach_camera_to_body(camera_handle, env, body_handle, local_transform, gymapi.FOLLOW_TRANSFORM)
@@ -69,7 +70,7 @@ def create_camera_attach(gym, env, width, height, body_handle, horizontal_fov=75
 # ============================================================================================
 def create_yumi(gym, env, yumi_asset, i, random=False):
     yumi_pose = gymapi.Transform()
-    yumi_pose.p = gymapi.Vec3(0.35, 0, 0.33)
+    yumi_pose.p = gymapi.Vec3(0.35, 0, 0.39)
     yumi_pose.r = gymapi.Quat(1, 0, 0, 0)
     # yumi_pose.r *= gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi)) if random else gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), 0)
     # if random:
