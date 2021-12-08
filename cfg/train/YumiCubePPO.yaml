@@ -37,7 +37,7 @@ params:
 #        padding:
 #      activation:
 #      norm_func_name:   # 'layer_norm', 'batch_norm'
-      conv_depths: [64, 128, 256, 512]  # [xx, xx, xx]
+      conv_depths: [32, 64, 128]   # [64, 128, 256, 512]  # [xx, xx, xx]
 #    rnn:
 #      units:
 #      layers:
@@ -55,7 +55,7 @@ params:
 #    separate:   # default False
 
     mlp:
-      units: [256, 128, 64]
+      units: [128, 64, 32]    # [256, 128, 64]
       activation: elu
       d2rl: False   # default False
 

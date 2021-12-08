@@ -81,6 +81,8 @@ class YumiCube(VecTask):
         self.load_perception = self.cfg["env"]["loadPerception"]
         self.perception_modle_path = self.cfg["env"]["perceptionModlePath"]
         self.showRGB = self.cfg["env"]["showRGB"]
+        self.showDepth = self.cfg["env"]["showDepth"]
+        self.showPointCloud = self.cfg["env"]["showPointCloud"]
 
         self.step_counter = 0
         # table
@@ -553,7 +555,7 @@ class YumiCube(VecTask):
                     image_tensor = torch.Tensor(image_array).to(self.device)
                 # cal unorganized point cloud =======================================================================
                 point_data_unorganized = None
-                if show_image:
+                if self.showPointCloud and j == 0:
                     image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
                     depth_image = DepthImage(image_array)
                     # camera intrinsics
@@ -571,8 +573,13 @@ class YumiCube(VecTask):
                     # # TODO: choose point data: whether organized
                     point_data_unorganized = point_normal.point_cloud.data.transpose(1, 0)
                     point_data_organized = self.depth2pointcloud(image_array).reshape(-1, 3)
+
+                    pc_1 = trimesh.PointCloud(point_data_unorganized, colors=[0, 255, 0])
+                    pc_2 = trimesh.PointCloud(point_data_organized, colors=[0, 0, 255])
+                    scene = trimesh.Scene([pc_1, pc_2])
+                    scene.show()
                 # show image =======================================================================
-                if show_image and j == 0:
+                if self.showDepth and j == 0:
                     image_array = image_tensor.cpu().numpy()    # image_array is depth map, not distance map
 
                     # -inf implies no depth value, set it to zero. output will be black.
@@ -588,13 +595,7 @@ class YumiCube(VecTask):
                     normalized_depth_image = Image.fromarray(image_array.astype(np.uint8), mode="L")
                     normalized_depth_image.show()
 
-                    point_data_organized = self.depth2pointcloud(image_array).reshape(-1, 3)
 
-                    pc_1 = trimesh.PointCloud(point_data_unorganized, colors=[0, 255, 0])
-                    pc_2 = trimesh.PointCloud(point_data_organized, colors=[0, 0, 255])
-                    scene = trimesh.Scene([pc_1, pc_2])
-                    scene.show()
-                    # exit()
                 # deal with image tensor, different image mode has different needs ====================================
                 if self.image_mode == 0:    # 0: depth repeat to 3 channels
                     image_tensor = image_tensor.unsqueeze(-1).repeat(1, 1, 3).permute(2, 0, 1).contiguous()
@@ -719,6 +720,7 @@ class YumiCube(VecTask):
             self.cube_states[env_ids] = self.default_cube_states[env_ids]
             if self.cube_random:
                 self.cube_states[env_ids, :, :2] += 0.2 * torch.rand((len(env_ids), 1, 2), device=self.device) - 0.1
+                # self.cube_states[env_ids, :, :2] += 0.2 * torch.ones((len(env_ids), 1, 2), device=self.device) - 0.1
                 if not self.have_gravity:
                     self.cube_states[env_ids, :, 2] += 0.2 * torch.rand((len(env_ids), 1), device=self.device)
                 arc_on_z = torch.rand((len(env_ids), 1), device=self.device) * np.pi * 2 - np.pi

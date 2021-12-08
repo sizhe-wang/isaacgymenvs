@@ -6,3 +6,4 @@ runs/
 summaries/
 .idea
 *.jpg
+*.pt

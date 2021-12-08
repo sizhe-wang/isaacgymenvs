@@ -91,32 +91,21 @@
 # used to create the object
 name: YumiCube
 
-physics_engine: ${..physics_engine}
+physics_engine: physx
 
 # if given, will override the device setting in gym.
 env:
-  numEnvs: ${resolve_default:16384,${...num_envs}}
+  numEnvs: 128
   envSpacing: 0.5
   episodeLength: 300  #150 # 70
   enableDebugVis: False
 
-  clipObservations: 5.0  # ???
-  clipActions: 1.0    # ???
+  clipObservations: 5.0
+  clipActions: 1.0
 
-#  startPositionNoise: 0.0
-#  startRotationNoise: 0.0
 
   numCubes: 1   # 方块个数
-#  aggregateMode: 3
 
-#  actionScale: 7.5
-#  dofVelocityScale: 0.1
-#  distRewardScale: 2.0
-#  rotRewardScale: 0.5
-#  aroundHandleRewardScale: 0.25
-#  openRewardScale: 7.5
-#  fingerDistRewardScale: 5.0
-#  actionPenaltyScale: 0.1
   heightRewardScale: 1
   liftHeight: 0.2  # 0.15
   xyzScale: 0.005
@@ -126,7 +115,6 @@ env:
   upTimes: 20
   realFeatureInput: True   # True: resnet, False: object vector
   pretrained: False   # True: perception module--->pretrained resnet34  False: perception mudule--->resnet18
-  modelMode: 1    # 0: pretrained resnet34  1: perception module ---> resnet18 (no pretrain)  2: auto encoder
   cubeRandom: True
   gripperRandom: True
   extrinsicRotations: True
@@ -146,7 +134,7 @@ env:
   showPointCloud: False
 
   asset:
-    assetRoot: "../../assets"
+    assetRoot: "../../../assets"
     assetFileNameYumi: "urdf/yumi_description/urdf/yumi_only_gripper.urdf"
 
   # camera config
@@ -164,12 +152,12 @@ sim:
   dt: 0.0166 # 1/60
   substeps: 2
   up_axis: "z"
-  use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
+  use_gpu_pipeline: True
   gravity: [0.0, 0.0, -9.81]
   physx:
-    num_threads: ${....num_threads}
-    solver_type: ${....solver_type}
-    use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
+    num_threads: 4
+    solver_type: 1
+    use_gpu: True # set to False to run on CPU
     num_position_iterations: 12
     num_velocity_iterations: 1
     contact_offset: 0.001
@@ -178,7 +166,7 @@ sim:
     max_depenetration_velocity: 1000.0
     default_buffer_size_multiplier: 5.0
     max_gpu_contact_pairs: 1048576 # 1024*1024
-    num_subscenes: ${....num_subscenes}
+    num_subscenes: 4
     contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (default - all contacts)
 
 task:

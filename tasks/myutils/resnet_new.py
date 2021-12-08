@@ -280,7 +280,8 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-
+        print(x.shape)
+        exit()
         x = self.avgpool(x)
         feature = torch.flatten(x, 1)
         x = self.fc(feature)
@@ -464,5 +465,7 @@ def wide_resnet101_2(pretrained: bool = False, progress: bool = True, **kwargs: 
 
 
 if __name__ == "__main__":
-    net = resnet18()
-    print(net)
+    input = torch.randn(3072, 3, 64, 64).cuda()
+    net = resnet18().cuda()
+    out = net(input)
+    # print(net)
