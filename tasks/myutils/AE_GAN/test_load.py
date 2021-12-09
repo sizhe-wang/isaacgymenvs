@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 
 
 if __name__ == "__main__":
-    model_path = "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/ae_gan/auto_encoder_1639040843.204224.pth"
+    model_path = "nns/ae_gan/auto_encoder_1639041249.699450.pth"
     model = ae_gan.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).cuda()
     model.load_state_dict(torch.load(model_path))
-    image_tensors = torch.load("/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/image_tensors/image_tensors.pt")[-8:]
+    image_tensors = torch.load("../image_tensors/image_tensors.pt")[-8:]
     recon = model.generate(image_tensors)
     imgs = []
 

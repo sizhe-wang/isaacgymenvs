@@ -19,7 +19,7 @@ set_seed = False
 batch_size = 128
 distributed = False
 workers = 0
-epoches = 20
+epoches = 200
 lr = 5e-4
 device = 'cuda:0'
 # hit = HitdlrLayer(device).to(device)
@@ -132,11 +132,11 @@ if __name__ == '__main__':
 
     auto_encoder = ae_gan.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).to(device)
     discriminator = ae_gan.Discriminator().to(device)
-    train_dataset = Custom_train_dataset(root="/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/image_tensors/",
+    train_dataset = Custom_train_dataset(root="../image_tensors/",
                                          split="train",
                                          transform=None,
                                          download=False)
-    val_dataset = Custom_val_dataset(root="/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/image_tensors/",
+    val_dataset = Custom_val_dataset(root="../image_tensors/",
                                          split="train",
                                          transform=None,
                                          download=False)
