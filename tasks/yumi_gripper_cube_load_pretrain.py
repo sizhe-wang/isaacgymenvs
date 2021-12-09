@@ -33,6 +33,7 @@ from autolab_core import DepthImage, CameraIntrinsics
 from torch.utils.tensorboard import SummaryWriter
 import trimesh
 from skimage.util import random_noise
+from IsaacGymEnvs.isaacgymenvs.tasks.myutils.auto_encoder import AutoEncoder
 
 
 # ========================================================
@@ -67,7 +68,7 @@ class YumiCube(VecTask):
 
         self.xyz_scale = self.cfg["env"]["xyzScale"]
         self.rz_scale = self.cfg["env"]["rzScale"]
-        self.pretrained = self.cfg["env"]["pretrained"]
+        self.modelMode = self.cfg["env"]["modelMode"]
         self.cube_random = self.cfg["env"]["cubeRandom"]
         self.gripper_random = self.cfg["env"]["gripperRandom"]
 
@@ -173,12 +174,12 @@ class YumiCube(VecTask):
         # image
         if self.real_feature_input:
             # assert False
-            if self.pretrained:
+            if self.modelMode == 1:     # 1: perception module ---> resnet18 (no pretrain)
                 # print('image mode false')
                 self.net = models.resnet34(pretrained=True)
                 self.net = torch.nn.Sequential(*(list(self.net.children())[:-1])).to(self.device)
                 self.net.eval()
-            else:
+            elif self.modelMode == 0:   # 0: pretrained resnet34
                 # print('image mode true1')
                 self.net = resnet34(num_classes=3).to(self.device)
                 if self.train_perception:
@@ -190,6 +191,11 @@ class YumiCube(VecTask):
                 elif self.load_perception:
                     self.net.load_state_dict(torch.load(self.perception_modle_path))
                     self.net.eval()
+            elif self.modelMode == 2:   # 2: auto encoder
+                self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[16, 16, 16],
+                                       img_height=self.camera_height, img_width=self.camera_width)
+                self.net.load_state_dict(torch.load(self.perception_modle_path))
+                self.net.eval()
             if self.image_mode == 2:
                 self.preprocess = transforms.Compose([  # [1]
                     # transforms.Resize(472),                    #[2]
@@ -638,37 +644,42 @@ class YumiCube(VecTask):
                 image_tensors = image_tensors / 255.
                 image_tensors = self.preprocess(image_tensors)
 
-            # # perception network =====================================================================================
-            # if self.pretrained:     # pretrained Resnet (not mine)
-            #     # print('mode = 2')
-            #     if self.image_mode < 3:
-            #         perception_output = self.net(image_tensors.view(-1, 3, self.camera_height, self.camera_width)).squeeze()
-            #         # torch.Size([num_envs, 512])
-            #         self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
-            #         # print("obs", self.obs_buf[0])
-            #     elif self.image_mode == 3:
-            #         perception_output = self.net(image_tensors.view(-1, 1, self.camera_height, self.camera_width)).squeeze()
-            #         self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
-            #
-            # else:
-            #     # print('mode = 3')
-            #     # print('image mode true6')
-            #     input_data = image_tensors.view(-1, 3, self.camera_height, self.camera_width).detach() if self.image_mode < 3 else image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
-            #
-            #     # target: object pos and rz
-            #     target = cube_xyz.detach()
-            #     if self.train_perception:
-            #         perception_output, feature = self.net.train_network(input_data, target, i=self.step_counter)
-            #     else:
-            #         perception_output, feature = self.net.inference_network(input_data, target, i=self.step_counter)
-            #     # perception_output = self.net.inference_network(input_data, target).detach()
+            # perception network =====================================================================================
+            if self.modelMode == 1:     # pretrained Resnet (not mine)
+                # print('mode = 2')
+                if self.image_mode < 3:     # 0: depth repeat to 3 channels    1: organized point cloud   2: RGB
+                    perception_output = self.net(image_tensors.view(-1, 3, self.camera_height, self.camera_width)).squeeze()
+                    # torch.Size([num_envs, 512])
+                    self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
+                    # print("obs", self.obs_buf[0])
+                elif self.image_mode == 3:      # 3: depth with one channel
+                    perception_output = self.net(image_tensors.view(-1, 1, self.camera_height, self.camera_width)).squeeze()
+                    self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
+
+            elif self.modelMode == 0:
+                # print('mode = 3')
+                # print('image mode true6')
+                input_data = image_tensors.view(-1, 3, self.camera_height, self.camera_width).detach() if self.image_mode < 3 else image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
+
+                # target: object pos and rz
+                target = cube_xyz.detach()
+                if self.train_perception:
+                    perception_output, feature = self.net.train_network(input_data, target, i=self.step_counter)
+                else:
+                    perception_output, feature = self.net.inference_network(input_data, target, i=self.step_counter)
+                # perception_output = self.net.inference_network(input_data, target).detach()
 
                 # TODO: [x, y, z] ---> [512 dim]
                 # self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
+            elif self.modelMode == 2:
+                input_data = image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
+                latent = self.net.encode(input_data).clone().detach()
+                self.obs_buf = torch.cat([latent, gripper_state], dim=-1).detach()
+
             if self.image_mode < 3:
                 self.obs_buf = image_tensors.view(-1, 3, self.camera_height, self.camera_width).detach()
 
-            elif self.image_mode == 3:  # 3: depth with one channel
+            elif self.image_mode == 3 and self.modelMode < 2:  # 3: depth with one channel
                 self.obs_buf = image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
 
         if not self.real_feature_input:

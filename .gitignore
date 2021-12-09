@@ -7,3 +7,5 @@ summaries/
 .idea
 *.jpg
 *.pt
+*.pth
+
