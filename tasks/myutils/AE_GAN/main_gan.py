@@ -59,8 +59,9 @@ def train_epoch(train_loader, epoch, epoches):
         # Generate a batch of images
         gen_imgs = auto_encoder(real_images)[0]
 
-        recons_loss = F.mse_loss(gen_imgs, real_images)
-        recons_weight = 500.
+        # recons_loss = F.mse_loss(gen_imgs, real_images)
+        recons_loss = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
+        recons_weight = 50.
 
         # Loss measures generator's ability to fool the discriminator
         adv_loss = adversarial_loss(discriminator(gen_imgs), valid_label)
