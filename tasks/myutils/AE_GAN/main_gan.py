@@ -11,6 +11,7 @@ import torch.backends.cudnn as cudnn
 from tqdm import tqdm, trange
 from torch.nn import functional as F
 import os
+import time
 
 
 seed = 0
@@ -38,7 +39,8 @@ def train_epoch(train_loader, epoch, epoches):
     auto_encoder.train()
     discriminator.train()
     loop = tqdm(train_loader, total=len(train_loader), leave=True)
-    loop.set_description(f'Epoch [{epoch}/{epoches}]')
+    # loop.set_description(f'Epoch [{epoch}/{epoches}]')
+    loop.set_description("Epoch [%d/%d]" % (epoch, epoches))
     for i, batch in enumerate(loop):
         real_images, targets = batch
         bs = real_images.size()[0]
@@ -61,7 +63,7 @@ def train_epoch(train_loader, epoch, epoches):
 
         # recons_loss = F.mse_loss(gen_imgs, real_images)
         recons_loss = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
-        recons_weight = 50.
+        recons_weight = 10.
 
         # Loss measures generator's ability to fool the discriminator
         adv_loss = adversarial_loss(discriminator(gen_imgs), valid_label)
@@ -164,8 +166,8 @@ if __name__ == '__main__':
         os.mkdir("nns")
     if not os.path.exists("nns/ae_gan"):
         os.mkdir("nns/ae_gan")
-    torch.save(auto_encoder.state_dict(), "nns/ae_gan/auto_encoder.pth")
-    torch.save(discriminator.state_dict(), "nns/ae_gan/discriminator.pth")
+    torch.save(auto_encoder.state_dict(), "nns/ae_gan/auto_encoder_%f.pth" % time.time())
+    torch.save(discriminator.state_dict(), "nns/ae_gan/discriminator_%f.pth" % time.time())
 
 
 
