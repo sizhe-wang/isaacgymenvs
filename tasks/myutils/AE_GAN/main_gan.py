@@ -19,12 +19,14 @@ set_seed = False
 batch_size = 128
 distributed = False
 workers = 0
-epoches = 200
+epoches = 10
 lr = 5e-4
 device = 'cuda:0'
-# hit = HitdlrLayer(device).to(device)
 adversarial_loss = torch.nn.BCELoss().to(device)
-# clip_value =
+save_seq = 10
+load = False
+auto_encoder_path = "nns/ae_gan/auto_encoder.pth"
+discriminator_path = "nns/ae_gan/discriminator.pth"
 
 
 def adjust_learning_rate(optimizer, epoch, learning_rate):
@@ -63,7 +65,7 @@ def train_epoch(train_loader, epoch, epoches):
 
         # recons_loss = F.mse_loss(gen_imgs, real_images)
         recons_loss = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
-        recons_weight = 10.
+        recons_weight = 50.
 
         # Loss measures generator's ability to fool the discriminator
         adv_loss = adversarial_loss(discriminator(gen_imgs), valid_label)
@@ -131,7 +133,11 @@ if __name__ == '__main__':
         cudnn.deterministic = True
 
     auto_encoder = ae_gan.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).to(device)
+    if load:
+        auto_encoder.load_state_dict(torch.load(auto_encoder_path))
     discriminator = ae_gan.Discriminator().to(device)
+    if load:
+        discriminator.load_state_dict(torch.load(discriminator_path))
     train_dataset = Custom_train_dataset(root="../image_tensors/",
                                          split="train",
                                          transform=None,
@@ -160,6 +166,11 @@ if __name__ == '__main__':
         adjust_learning_rate(optimizer_D, epoch, lr)
         adjust_learning_rate(optimizer_G, epoch, lr)
         train_epoch(train_loader, epoch, epoches)
+        if epoch % save_seq == 0:
+            if not os.path.exists("nns/ae_gan"):
+                os.mkdir("nns/ae_gan")
+            torch.save(auto_encoder.state_dict(), "nns/ae_gan/auto_encoder.pth")
+            torch.save(discriminator.state_dict(), "nns/ae_gan/discriminator.pth")
     # valiate(val_loader)
 
     if not os.path.exists("nns"):
