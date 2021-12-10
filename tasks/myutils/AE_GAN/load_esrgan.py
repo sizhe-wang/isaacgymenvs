@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 if __name__ == "__main__":
-    model_path = "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/esrgan/auto_encoder_1639112850.596145.pth"
+    model_path = "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/esrgan/auto_encoder_1639129198.421949.pth"
     model = ae_gan.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).cuda()
     model.load_state_dict(torch.load(model_path))
     image_tensors = torch.load("../image_tensors/image_tensors.pt")[-8:]

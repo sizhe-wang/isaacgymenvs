@@ -21,12 +21,13 @@ set_seed = False
 batch_size = 128
 distributed = False
 workers = 12
-epoches = 2
+epoches = 40
 lr = 5e-4
 device = 'cuda:0'
 save_seq = 10
-load = False
-auto_encoder_path = "nns/esrgan/auto_encoder.pth"
+load_ae = False
+load_discriminator = False
+auto_encoder_path = "nns/ae_gan/ae_gan/auto_encoder_1639070062.656193.pth"
 discriminator_path = "nns/esrgan/discriminator.pth"
 in_channel = 1
 hr_shape = (64, 64)
@@ -48,7 +49,6 @@ def adjust_learning_rate(optimizer, epoch, learning_rate):
 
 
 def train_epoch(train_loader, epoch, epoches):
-    # model.train()
     auto_encoder.train()
     discriminator.train()
     loop = tqdm(train_loader, total=len(train_loader), leave=True)
@@ -79,10 +79,11 @@ def train_epoch(train_loader, epoch, epoches):
         # recons_loss = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
         # recons_weight = 50.
         # Measure pixel-wise loss against ground truth
-        # loss_pixel = criterion_pixel(gen_imgs, real_images)
-        loss_pixel = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
+        loss_pixel = criterion_pixel(gen_imgs, real_images)
+        # loss_pixel = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
+        # loss_pixel = F.mse_loss(gen_imgs, real_images)
         if batches_done < warmup_batches:
-            # Warm-up (pixel-wise loss only)
+            # Warm-up (pixel-wise loss only)ZZ
             loss_pixel.backward()
             optimizer_G.step()
             loop.set_postfix(loss_pixel=loss_pixel.item())
@@ -142,10 +143,10 @@ if __name__ == '__main__':
         cudnn.deterministic = True
 
     auto_encoder = ae_gan.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).to(device)
-    if load:
+    if load_ae:
         auto_encoder.load_state_dict(torch.load(auto_encoder_path))
     discriminator = Discriminator(input_shape=(in_channel, *hr_shape)).to(device)
-    if load:
+    if load_discriminator:
         discriminator.load_state_dict(torch.load(discriminator_path))
 
     train_dataset = Custom_train_dataset(root="../image_tensors/",
