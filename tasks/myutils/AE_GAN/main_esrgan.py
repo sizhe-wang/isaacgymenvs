@@ -13,6 +13,7 @@ from tqdm import tqdm, trange
 from torch.nn import functional as F
 import os
 import time
+from torch.utils.tensorboard import SummaryWriter
 
 
 seed = 0
@@ -20,7 +21,7 @@ set_seed = False
 batch_size = 128
 distributed = False
 workers = 12
-epoches = 40
+epoches = 2
 lr = 5e-4
 device = 'cuda:0'
 save_seq = 10
@@ -29,7 +30,7 @@ auto_encoder_path = "nns/esrgan/auto_encoder.pth"
 discriminator_path = "nns/esrgan/discriminator.pth"
 in_channel = 1
 hr_shape = (64, 64)
-warmup_batches = 1      # "number of batches with pixel-wise loss only"
+warmup_batches = 10      # "number of batches with pixel-wise loss only"
 lambda_adv = 5e-3   # "adversarial loss weight"
 lambda_pixel = 1e-2     # "pixel-wise loss weight"
 
@@ -85,6 +86,7 @@ def train_epoch(train_loader, epoch, epoches):
             loss_pixel.backward()
             optimizer_G.step()
             loop.set_postfix(loss_pixel=loss_pixel.item())
+            writer.add_scalar("warmup/loss_pixel", loss_pixel.item(), global_step=batches_done)
             continue
 
         # Extract validity predictions from discriminator
@@ -126,7 +128,11 @@ def train_epoch(train_loader, epoch, epoches):
         # )
         loop.set_postfix(loss_D=loss_D.item(), loss_G=loss_G.item(),
                          loss_GAN=loss_GAN.item(), loss_pixel=loss_pixel.item())
-        # batches_done = epoch * len(train_loader) + i
+        writer.add_scalar("loss_D/loss_D", loss_D.item(), global_step=batches_done)
+        writer.add_scalar("loss_G/loss_G", loss_G.item(), global_step=batches_done)
+        writer.add_scalar("loss_G/loss_GAN", loss_GAN.item(), global_step=batches_done)
+        writer.add_scalar("loss_G/loss_pixel", loss_pixel.item(), global_step=batches_done)
+
 
 if __name__ == '__main__':
     if set_seed:
@@ -168,7 +174,11 @@ if __name__ == '__main__':
     val_loader = torch.utils.data.DataLoader(
         val_dataset, batch_size=1, shuffle=False, sampler=None, persistent_workers=True, num_workers=workers)
     # valiate(val_loader)
-
+    if not os.path.exists("summaries"):
+        os.mkdir("summaries")
+    if not os.path.exists("summaries/esrgan"):
+        os.mkdir("summaries/esrgan")
+    writer = SummaryWriter('summaries/esrgan')
     for epoch in range(epoches):
         adjust_learning_rate(optimizer_D, epoch, lr)
         adjust_learning_rate(optimizer_G, epoch, lr)

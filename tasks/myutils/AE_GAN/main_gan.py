@@ -12,6 +12,7 @@ from tqdm import tqdm, trange
 from torch.nn import functional as F
 import os
 import time
+from torch.utils.tensorboard import SummaryWriter
 
 
 seed = 0
@@ -19,7 +20,7 @@ set_seed = False
 batch_size = 128
 distributed = False
 workers = 12
-epoches = 10
+epoches = 2
 lr = 5e-4
 device = 'cuda:0'
 adversarial_loss = torch.nn.BCELoss().to(device)
@@ -94,7 +95,11 @@ def train_epoch(train_loader, epoch, epoches):
         #     % (epoch, epoches, i, len(train_loader), d_loss.item(), g_loss.item())
         # )
         loop.set_postfix(d_loss=d_loss.item(), g_loss=g_loss.item(), recons_loss=recons_loss.item(), adversarial_loss=adv_loss.item())
-        # batches_done = epoch * len(train_loader) + i
+        batches_done = epoch * len(train_loader) + i
+        writer.add_scalar("loss_D/d_loss", d_loss.item(), global_step=batches_done)
+        writer.add_scalar("loss_G/g_loss", g_loss.item(), global_step=batches_done)
+        writer.add_scalar("loss_G/recons_loss", recons_loss.item(), global_step=batches_done)
+        writer.add_scalar("loss_G/adversarial_loss", adv_loss.item(), global_step=batches_done)
 
 
 # def valiate(val_loader):
@@ -162,7 +167,11 @@ if __name__ == '__main__':
         val_dataset, batch_size=1, shuffle=False,
         sampler=None, persistent_workers=True, num_workers=workers)
     # valiate(val_loader)
-
+    if not os.path.exists("summaries"):
+        os.mkdir("summaries")
+    if not os.path.exists("summaries/ae_gan"):
+        os.mkdir("summaries/ae_gan")
+    writer = SummaryWriter('summaries/ae_gan')
     for epoch in range(epoches):
         adjust_learning_rate(optimizer_D, epoch, lr)
         adjust_learning_rate(optimizer_G, epoch, lr)
