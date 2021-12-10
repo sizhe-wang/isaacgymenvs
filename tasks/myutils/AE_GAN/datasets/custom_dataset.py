@@ -8,10 +8,14 @@ from torch.utils.data.dataset import Dataset
 #                              download=False
 
 class Custom_train_dataset(Dataset):
-    def __init__(self, root=None, split='train', transform=None, download=False):
-        file_path = os.path.join(root, 'image_tensors.pt')
-        # self.data = torch.load(file_path)[:50040]
-        self.data = torch.load(file_path)[:5004]
+    def __init__(self, root=None, split='train', transform=None, download=False, device='gpu', percentage: float = 1.):
+        num = int(percentage * 50040)
+        if device == 'gpu':
+            file_path = os.path.join(root, 'image_tensors.pt')
+            self.data = torch.load(file_path)[:num].cpu()
+        elif device == 'cpu':
+            file_path = os.path.join(root, 'image_tensors_cpu.pt')
+            self.data = torch.load(file_path)[:num]
         self.transform = transform
 
     def __getitem__(self, index):
@@ -24,9 +28,14 @@ class Custom_train_dataset(Dataset):
 
 
 class Custom_val_dataset(Dataset):
-    def __init__(self, root=None, split='train', transform=None, download=False):
-        file_path = os.path.join(root, 'image_tensors.pt')
-        self.data = torch.load(file_path)[50040:]
+    def __init__(self, root=None, split='train', transform=None, download=False, device='gpu', percentage: float = 1.):
+        num = int(percentage * 50040)
+        if device == 'gpu':
+            file_path = os.path.join(root, 'image_tensors.pt')
+            self.data = torch.load(file_path)[:num].cpu()
+        elif device == 'cpu':
+            file_path = os.path.join(root, 'image_tensors_cpu.pt')
+            self.data = torch.load(file_path)[:num]
         self.transform = transform
 
     def __getitem__(self, index):

@@ -10,5 +10,7 @@ if __name__ == "__main__":
     print(image_tensors.shape)
     print(torch.max(image_tensors))
     print(torch.min(image_tensors))
-
-    # torch.save(image_tensors, "image_tensors/image_tensors.pt")
+    # image_tensors_cpu = image_tensors.clone().cpu()
+    # print(torch.min(image_tensors))
+    # print(torch.min(image_tensors_cpu))
+    # torch.save(image_tensors_cpu, "image_tensors/image_tensors_cpu.pt")

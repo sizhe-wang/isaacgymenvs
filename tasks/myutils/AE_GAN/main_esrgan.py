@@ -19,15 +19,14 @@ seed = 0
 set_seed = False
 batch_size = 128
 distributed = False
-workers = 0
-epoches = 100
+workers = 12
+epoches = 40
 lr = 5e-4
 device = 'cuda:0'
 save_seq = 10
 load = False
 auto_encoder_path = "nns/esrgan/auto_encoder.pth"
 discriminator_path = "nns/esrgan/discriminator.pth"
-feature_extractor_path = ""
 in_channel = 1
 hr_shape = (64, 64)
 warmup_batches = 1      # "number of batches with pixel-wise loss only"
@@ -36,7 +35,6 @@ lambda_pixel = 1e-2     # "pixel-wise loss weight"
 
 # Losses
 criterion_GAN = torch.nn.BCEWithLogitsLoss().to(device)
-criterion_content = torch.nn.L1Loss().to(device)
 criterion_pixel = torch.nn.L1Loss().to(device)
 adversarial_loss = torch.nn.BCELoss().to(device)
 
@@ -57,6 +55,7 @@ def train_epoch(train_loader, epoch, epoches):
     for i, batch in enumerate(loop):
         batches_done = epoch * len(train_loader) + i
         real_images, targets = batch
+        real_images = real_images.to(device)
         bs = real_images.size()[0]
 
         # Adversarial ground truths
@@ -79,7 +78,8 @@ def train_epoch(train_loader, epoch, epoches):
         # recons_loss = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
         # recons_weight = 50.
         # Measure pixel-wise loss against ground truth
-        loss_pixel = criterion_pixel(gen_imgs, real_images)
+        # loss_pixel = criterion_pixel(gen_imgs, real_images)
+        loss_pixel = F.smooth_l1_loss(gen_imgs, real_images, beta=1./100)
         if batches_done < warmup_batches:
             # Warm-up (pixel-wise loss only)
             loss_pixel.backward()
@@ -145,11 +145,15 @@ if __name__ == '__main__':
     train_dataset = Custom_train_dataset(root="../image_tensors/",
                                          split="train",
                                          transform=None,
-                                         download=False)
+                                         download=False,
+                                         device='cpu',
+                                         percentage=0.1)
     val_dataset = Custom_val_dataset(root="../image_tensors/",
-                                         split="train",
-                                         transform=None,
-                                         download=False)
+                                     split="train",
+                                     transform=None,
+                                     download=False,
+                                     device='cpu',
+                                     percentage=0.1)
     optimizer_G = torch.optim.Adam(auto_encoder.parameters(), lr=lr, betas=(0.5, 0.999))
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
 
@@ -160,10 +164,9 @@ if __name__ == '__main__':
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None), drop_last=False,
-        sampler=train_sampler)
+        sampler=train_sampler, persistent_workers=True, num_workers=workers)
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=1, shuffle=False,
-        sampler=None)
+        val_dataset, batch_size=1, shuffle=False, sampler=None, persistent_workers=True, num_workers=workers)
     # valiate(val_loader)
 
     for epoch in range(epoches):

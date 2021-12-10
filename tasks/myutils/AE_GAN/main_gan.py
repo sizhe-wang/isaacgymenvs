@@ -18,7 +18,7 @@ seed = 0
 set_seed = False
 batch_size = 128
 distributed = False
-workers = 0
+workers = 12
 epoches = 10
 lr = 5e-4
 device = 'cuda:0'
@@ -45,6 +45,7 @@ def train_epoch(train_loader, epoch, epoches):
     loop.set_description("Epoch [%d/%d]" % (epoch, epoches))
     for i, batch in enumerate(loop):
         real_images, targets = batch
+        real_images = real_images.to(device)
         bs = real_images.size()[0]
 
         # Adversarial ground truths
@@ -156,10 +157,10 @@ if __name__ == '__main__':
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None), drop_last=False,
-        sampler=train_sampler)
+        sampler=train_sampler, persistent_workers=True, num_workers=workers)
     val_loader = torch.utils.data.DataLoader(
         val_dataset, batch_size=1, shuffle=False,
-        sampler=None)
+        sampler=None, persistent_workers=True, num_workers=workers)
     # valiate(val_loader)
 
     for epoch in range(epoches):
