@@ -3,7 +3,7 @@ import trimesh
 import torch
 import numpy as np
 # from models import cvae
-from models import ae_gan
+from models import aae
 from datasets.custom_dataset import Custom_train_dataset, Custom_val_dataset
 # from hitdlr_kinematics.hitdlr_layer.hitdlr_layer import HitdlrLayer
 # from dataset.DLRdatasetloader import DLRdataset
@@ -19,15 +19,15 @@ seed = 0
 set_seed = False
 batch_size = 128
 distributed = False
-workers = 32
-epoches = 100
+workers = 12
+epoches = 1
 lr = 5e-4
 device = 'cuda:0'
 adversarial_loss = torch.nn.BCELoss().to(device)
 save_seq = 10
 load = False
-auto_encoder_path = "nns/ae_gan/auto_encoder.pth"
-discriminator_path = "nns/ae_gan/discriminator.pth"
+auto_encoder_path = "nns/aae/auto_encoder.pth"
+discriminator_path = "nns/aae/discriminator.pth"
 
 
 def adjust_learning_rate(optimizer, epoch, learning_rate):
@@ -139,10 +139,10 @@ if __name__ == '__main__':
         torch.manual_seed(seed)
         cudnn.deterministic = True
 
-    auto_encoder = ae_gan.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).to(device)
+    auto_encoder = aae.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).to(device)
     if load:
         auto_encoder.load_state_dict(torch.load(auto_encoder_path))
-    discriminator = ae_gan.Discriminator().to(device)
+    discriminator = aae.Discriminator().to(device)
     if load:
         discriminator.load_state_dict(torch.load(discriminator_path))
     train_dataset = Custom_train_dataset(root="../image_tensors/",
@@ -170,9 +170,9 @@ if __name__ == '__main__':
     # valiate(val_loader)
     if not os.path.exists("summaries"):
         os.mkdir("summaries")
-    if not os.path.exists("summaries/ae_gan"):
-        os.mkdir("summaries/ae_gan")
-    writer = SummaryWriter('summaries/ae_gan')
+    if not os.path.exists("summaries/aae"):
+        os.mkdir("summaries/aae")
+    writer = SummaryWriter('summaries/aae')
     for epoch in range(epoches):
         adjust_learning_rate(optimizer_D, epoch, lr)
         adjust_learning_rate(optimizer_G, epoch, lr)
@@ -180,18 +180,18 @@ if __name__ == '__main__':
         if epoch % save_seq == 0:
             if not os.path.exists("nns"):
                 os.mkdir("nns")
-            if not os.path.exists("nns/ae_gan"):
-                os.mkdir("nns/ae_gan")
-            torch.save(auto_encoder.state_dict(), "nns/ae_gan/auto_encoder.pth")
-            torch.save(discriminator.state_dict(), "nns/ae_gan/discriminator.pth")
+            if not os.path.exists("nns/aae"):
+                os.mkdir("nns/aae")
+            torch.save(auto_encoder.state_dict(), "nns/aae/auto_encoder.pth")
+            torch.save(discriminator.state_dict(), "nns/aae/discriminator.pth")
     # valiate(val_loader)
 
     if not os.path.exists("nns"):
         os.mkdir("nns")
-    if not os.path.exists("nns/ae_gan"):
-        os.mkdir("nns/ae_gan")
-    torch.save(auto_encoder.state_dict(), "nns/ae_gan/auto_encoder_%f.pth" % time.time())
-    torch.save(discriminator.state_dict(), "nns/ae_gan/discriminator_%f.pth" % time.time())
+    if not os.path.exists("nns/aae"):
+        os.mkdir("nns/aae")
+    torch.save(auto_encoder.state_dict(), "nns/aae/auto_encoder_%f.pth" % time.time())
+    torch.save(discriminator.state_dict(), "nns/aae/discriminator_%f.pth" % time.time())
 
 
 

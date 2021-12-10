@@ -32,7 +32,16 @@ class AutoEncoder(torch.nn.Module):
         self.hidden_dims = copy.deepcopy(hidden_dims)
         self.stride = 2
         # Build Encoder
-        for h_dim in hidden_dims:
+        for h_dim in hidden_dims[:1]:
+            modules.append(
+                nn.Sequential(
+                    nn.Conv2d(in_channels, out_channels=h_dim,
+                              kernel_size= 3, stride=self.stride, padding  = 1),
+                    nn.LeakyReLU())
+            )
+            in_channels = h_dim
+
+        for h_dim in hidden_dims[1:]:
             modules.append(
                 nn.Sequential(
                     nn.Conv2d(in_channels, out_channels=h_dim,
@@ -56,17 +65,29 @@ class AutoEncoder(torch.nn.Module):
         hidden_dims.reverse()
 
         for i in range(len(hidden_dims) - 1):
-            modules.append(
-                nn.Sequential(
-                    nn.ConvTranspose2d(hidden_dims[i],
-                                       hidden_dims[i + 1],
-                                       kernel_size=3,
-                                       stride=self.stride,
-                                       padding=1,
-                                       output_padding=1),
-                    nn.BatchNorm2d(hidden_dims[i + 1]),
-                    nn.LeakyReLU())
-            )
+            if i == 0:
+                modules.append(
+                    nn.Sequential(
+                        nn.ConvTranspose2d(hidden_dims[i],
+                                           hidden_dims[i + 1],
+                                           kernel_size=3,
+                                           stride=self.stride,
+                                           padding=1,
+                                           output_padding=1),
+                        nn.LeakyReLU())
+                )
+            else:
+                modules.append(
+                    nn.Sequential(
+                        nn.ConvTranspose2d(hidden_dims[i],
+                                           hidden_dims[i + 1],
+                                           kernel_size=3,
+                                           stride=self.stride,
+                                           padding=1,
+                                           output_padding=1),
+                        nn.BatchNorm2d(hidden_dims[i + 1]),
+                        nn.LeakyReLU())
+                )
 
 
 
