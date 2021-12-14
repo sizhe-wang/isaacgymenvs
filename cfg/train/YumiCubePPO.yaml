@@ -7,7 +7,7 @@ params:
     name: continuous_a2c_logstd   # discrete_a2c, multi_discrete_a2c, continuous_a2c, soft_actor_critic
 
   network:
-    name: resnet_actor_critic  # resnet_actor_critic, rnd_curiosity, soft_actor_critic,
+    name: actor_critic  # resnet_actor_critic, rnd_curiosity, soft_actor_critic,
     separate: False
 
     space:
@@ -28,16 +28,16 @@ params:
 #  value_size=1(default)
 #  num_seqs=1(default)
 
-    cnn:
-#      type:   # 'conv2d', 'coord_conv2d', 'conv1d'
-#      convs:
-#        filters:
-#        kernel_size:
-#        strides:
-#        padding:
-#      activation:
-#      norm_func_name:   # 'layer_norm', 'batch_norm'
-      conv_depths: [32, 64, 128]   # [64, 128, 256, 512]  # [xx, xx, xx]
+#    cnn:
+##      type:   # 'conv2d', 'coord_conv2d', 'conv1d'
+##      convs:
+##        filters:
+##        kernel_size:
+##        strides:
+##        padding:
+##      activation:
+##      norm_func_name:   # 'layer_norm', 'batch_norm'
+#      conv_depths: [32, 64, 128]   # [64, 128, 256, 512]  # [xx, xx, xx]
 #    rnn:
 #      units:
 #      layers:
@@ -87,15 +87,15 @@ params:
     kl_threshold: 0.008
     score_to_win: 10000
     max_epochs: ${resolve_default:3000,${....max_iterations}}
-    save_best_after: 200 # 200
-    save_frequency: 100 # 100
+    save_best_after: 50 # 200
+    save_frequency: 50 # 100
     print_stats: True
     grad_norm: 1.0
     entropy_coef: 0.0
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 2  # 16
-    minibatch_size: 2  # 8192
+    horizon_length: 16  # 16
+    minibatch_size: 8192  # 8192
     mini_epochs: 8
     critic_coef: 4
     clip_value: True

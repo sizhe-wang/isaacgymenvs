@@ -126,7 +126,7 @@ env:
   upTimes: 20
   realFeatureInput: True   # True: resnet, False: object vector
   pretrained: False   # True: perception module--->pretrained resnet34  False: perception mudule--->resnet18
-  modelMode: 1    # 0: pretrained resnet34  1: perception module ---> resnet18 (no pretrain)  2: auto encoder
+  modelMode: 2    # 0: pretrained resnet34  1: perception module ---> resnet18 (no pretrain)  2: auto encoder
   cubeRandom: True
   gripperRandom: True
   extrinsicRotations: True
@@ -140,7 +140,8 @@ env:
   trainPerception: False
   loadPerception: False
 #  perceptionModlePath: "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
-  perceptionModlePath: "tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
+  perceptionModlePath: "tasks/myutils/AE_GAN/nns/aae5/auto_encoder_1639217753.708108.pth"
+  # /home/v-wewei/code/IsaacGym_Preview3/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/aae5/auto_encoder_1639217753.708108.pth
   showRGB: False
   showDepth: False
   showPointCloud: False

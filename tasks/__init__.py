@@ -41,8 +41,8 @@ from isaacgymenvs.tasks.shadow_hand import ShadowHand
 from isaacgymenvs.tasks.trifinger import Trifinger
 # from isaacgymenvs.tasks.yumi_cube import YumiCube
 # from isaacgymenvs.tasks.yumi_gripper_cube import YumiCube
-# from isaacgymenvs.tasks.yumi_gripper_cube_load_pretrain import YumiCube
-from isaacgymenvs.tasks.hand import Hand
+from isaacgymenvs.tasks.yumi_gripper_cube_load_pretrain import YumiCube
+# from isaacgymenvs.tasks.hand import Hand
 
 # Mappings from strings to environments
 isaacgym_task_map = {
@@ -58,6 +58,6 @@ isaacgym_task_map = {
     "Quadcopter": Quadcopter,
     "ShadowHand": ShadowHand,
     "Trifinger": Trifinger,
-    # "YumiCube": YumiCube,
-    "Hand": Hand,
+    "YumiCube": YumiCube,
+    # "Hand": Hand,
 }

@@ -33,7 +33,7 @@ from autolab_core import DepthImage, CameraIntrinsics
 from torch.utils.tensorboard import SummaryWriter
 import trimesh
 from skimage.util import random_noise
-from IsaacGymEnvs.isaacgymenvs.tasks.myutils.auto_encoder import AutoEncoder
+from isaacgymenvs.tasks.myutils.AE_GAN.models.aae import AutoEncoder
 
 
 # ========================================================
@@ -103,7 +103,9 @@ class YumiCube(VecTask):
         self.dt = 1 / 60.
 
         if self.real_feature_input:
-            if self.image_mode < 3:
+            if self.modelMode == 2:
+                self._num_obs = 105
+            elif self.image_mode < 3:
                 self._num_obs = (3, self.camera_height, self.camera_width)
             elif self.image_mode == 3:
                 self._num_obs = (1, self.camera_height, self.camera_width)
@@ -192,8 +194,8 @@ class YumiCube(VecTask):
                     self.net.load_state_dict(torch.load(self.perception_modle_path))
                     self.net.eval()
             elif self.modelMode == 2:   # 2: auto encoder
-                self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[16, 16, 16],
-                                       img_height=self.camera_height, img_width=self.camera_width)
+                self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32],
+                                       img_height=self.camera_height, img_width=self.camera_width).to(self.device)
                 self.net.load_state_dict(torch.load(self.perception_modle_path))
                 self.net.eval()
             if self.image_mode == 2:
@@ -519,10 +521,11 @@ class YumiCube(VecTask):
         if len(self.success_ids) > 0:
             object_height = self.rigid_body_states[:, cube_index, 2].view(self.num_envs, 1)
             # print("lifted:", (object_height - self.table_dims.z - self.cube_size / 2.)[self.success_ids])
-            with open("lifted.txt", "w") as f:
+            with open("lifted.txt", "a") as f:
                 x = (object_height - self.table_dims.z - self.cube_size / 2.)[self.success_ids].cpu().numpy().tolist()
                 strNums = [str(x_i) for x_i in x]
                 str1 = ",".join(strNums)
+                f.write("runs %d\t" % self.step_counter)
                 f.write(str1)
                 f.write("\n")
                 f.write("-----------------------------------------------------------------------")
@@ -645,7 +648,7 @@ class YumiCube(VecTask):
                 image_tensors = self.preprocess(image_tensors)
 
             # perception network =====================================================================================
-            if self.modelMode == 1:     # pretrained Resnet (not mine)
+            if self.modelMode == 1:     # 1: perception module ---> resnet18 (no pretrain)
                 # print('mode = 2')
                 if self.image_mode < 3:     # 0: depth repeat to 3 channels    1: organized point cloud   2: RGB
                     perception_output = self.net(image_tensors.view(-1, 3, self.camera_height, self.camera_width)).squeeze()
@@ -656,7 +659,7 @@ class YumiCube(VecTask):
                     perception_output = self.net(image_tensors.view(-1, 1, self.camera_height, self.camera_width)).squeeze()
                     self.obs_buf = torch.cat([perception_output, gripper_state], dim=-1)
 
-            elif self.modelMode == 0:
+            elif self.modelMode == 0:   # 0: pretrained resnet34
                 # print('mode = 3')
                 # print('image mode true6')
                 input_data = image_tensors.view(-1, 3, self.camera_height, self.camera_width).detach() if self.image_mode < 3 else image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
@@ -671,7 +674,7 @@ class YumiCube(VecTask):
 
                 # TODO: [x, y, z] ---> [512 dim]
                 # self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
-            elif self.modelMode == 2:
+            elif self.modelMode == 2:   # 2: auto encoder
                 input_data = image_tensors.view(-1, 1, self.camera_height, self.camera_width).detach()
                 latent = self.net.encode(input_data).clone().detach()
                 self.obs_buf = torch.cat([latent, gripper_state], dim=-1).detach()
