@@ -33,7 +33,7 @@ from autolab_core import DepthImage, CameraIntrinsics
 from torch.utils.tensorboard import SummaryWriter
 import trimesh
 from skimage.util import random_noise
-from isaacgymenvs.tasks.myutils.AE_GAN.models.aae import AutoEncoder
+from isaacgymenvs.tasks.myutils.auto_encoder import AAE, AutoEncoder
 
 
 # ========================================================
@@ -53,7 +53,6 @@ def control_ik(dpose, device, j_eef, num_envs, damping=0.05):
 
 
 class YumiCube(VecTask):
-
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
         # 一些基础配置
         self.cfg = cfg
@@ -81,6 +80,7 @@ class YumiCube(VecTask):
         self.train_perception = self.cfg["env"]["trainPerception"]
         self.load_perception = self.cfg["env"]["loadPerception"]
         self.perception_modle_path = self.cfg["env"]["perceptionModlePath"]
+        self.discriminator_path = self.cfg["env"]["discriminatorPath"]
         self.showRGB = self.cfg["env"]["showRGB"]
         self.showDepth = self.cfg["env"]["showDepth"]
         self.showPointCloud = self.cfg["env"]["showPointCloud"]
@@ -96,6 +96,14 @@ class YumiCube(VecTask):
         self.camera_vertical_fov = self.camera_height / self.camera_width * self.camera_horizontal_fov
         self.camera_location = gymapi.Vec3(0.35, 0.65, 0.75)
         self.camera_lookat = gymapi.Vec3(0.35, 0., self.table_dims.z)
+
+        # about aae
+        self.aae_warmup = self.cfg["env"]["aae"]["warmup"]
+        self.aae_save_seq = self.cfg["env"]["aae"]["save_seq"]
+        self.aae_optimizer_lr = self.cfg["env"]["aae"]["optimizer"]["lr"]
+        self.aae_optimizer_betas0 = self.cfg["env"]["aae"]["optimizer"]["betas0"]
+        self.aae_optimizer_betas1 = self.cfg["env"]["aae"]["optimizer"]["betas1"]
+        self.aae_scheduler_gamma = self.cfg["env"]["aae"]["scheduler"]["gamma"]
 
         self.up_axis = "z"
         self.up_axis_idx = 2
@@ -185,19 +193,32 @@ class YumiCube(VecTask):
                 # print('image mode true1')
                 self.net = resnet34(num_classes=3).to(self.device)
                 if self.train_perception:
-                    # self.net.load_state_dict(torch.load(self.perception_modle_path))
+                    if self.load_perception:
+                        self.net.load_state_dict(torch.load(self.perception_modle_path))
                     self.net.set_learning_rate(1e-4)
                     self.net.create_optimzer()
                     self.net.create_scheduler(milestones=[1500], gamma=0.1)
                     self.net.train()
-                elif self.load_perception:
-                    self.net.load_state_dict(torch.load(self.perception_modle_path))
+                else:
+                    if self.load_perception:
+                        self.net.load_state_dict(torch.load(self.perception_modle_path))
                     self.net.eval()
+
             elif self.modelMode == 2:   # 2: auto encoder
-                self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32],
-                                       img_height=self.camera_height, img_width=self.camera_width).to(self.device)
-                self.net.load_state_dict(torch.load(self.perception_modle_path))
-                self.net.eval()
+                if self.train_perception:
+                    self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device)
+                    if self.load_perception:
+                        self.net.auto_encoder.load_state_dict(torch.load(self.perception_modle_path))
+                        self.net.discriminator.load_state_dict(torch.load(self.discriminator_path))
+                    self.net.create_optimizer(lr=self.aae_optimizer_lr, betas=(self.aae_optimizer_betas0, self.aae_optimizer_betas1))
+                    self.net.create_scheduler(gamma=self.aae_scheduler_gamma)
+                    self.net.auto_encoder.train()
+                    self.net.discriminator.train()
+                else:
+                    self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device)
+                    if self.load_perception:
+                        self.net.load_state_dict(torch.load(self.perception_modle_path))
+                    self.net.eval()
             if self.image_mode == 2:
                 self.preprocess = transforms.Compose([  # [1]
                     # transforms.Resize(472),                    #[2]
@@ -676,7 +697,6 @@ class YumiCube(VecTask):
                 # self.obs_buf = torch.cat([feature, gripper_state], dim=-1)
             elif self.modelMode == 2:   # 2: auto encoder
                 input_data = image_tensors.view(-1, 1, self.camera_height, self.camera_width).clone().detach()
-                # input_data = (input_data - torch.max(input_data)) / (torch.min(input_data) - torch.max(input_data))
                 min_depth = -0.4
                 max_depth = 0.
                 mask = torch.full_like(input_data, min_depth, device=self.device)
@@ -685,9 +705,18 @@ class YumiCube(VecTask):
                 input_data = (input_data - max_depth) / (min_depth - max_depth)
                 input_data = input_data.view(-1, 1, 64, 64)
                 input_data = input_data * 2.0 - 1.0
-
-                latent = self.net.encode(input_data).clone().detach()
-                self.obs_buf = torch.cat([latent, gripper_state], dim=-1).detach()
+                if self.train_perception:
+                    self.net.auto_encoder.train()
+                    self.net.discriminator.train()
+                    self.net.train_epoch(real_images=input_data, n_batch=self.step_counter,
+                                         save_seq=self.aae_save_seq, warmup=self.aae_warmup)
+                    self.net.auto_encoder.eval()
+                    self.net.discriminator.eval()
+                    latent = self.net.auto_encoder.encode(input_data).clone().detach()
+                    self.obs_buf = torch.cat([latent, gripper_state], dim=-1).detach()
+                else:
+                    latent = self.net.encode(input_data).clone().detach()
+                    self.obs_buf = torch.cat([latent, gripper_state], dim=-1).detach()
 
             if self.image_mode < 3:
                 self.obs_buf = image_tensors.view(-1, 3, self.camera_height, self.camera_width).detach()

@@ -137,14 +137,31 @@ env:
   # 3: obs: perception output + gripper states, perception: not pretrained Resnet18, train perception and control together
   imageMode: 3  # 0: depth repeat to 3 channels    1: organized point cloud   2: RGB      3: depth with one channel
   addNoiseToImage: False
-  trainPerception: False
-  loadPerception: False
+  trainPerception: True
+  loadPerception: True
 #  perceptionModlePath: "/home/wsz/IsaacGym_Preview_3_Package/IsaacGymEnvs/isaacgymenvs/tasks/myutils/perception_pretrain/YumiDepth_withoutNoise/nn/perception_pretrain_organized_point_cloud.pth"
-  perceptionModlePath: "tasks/myutils/AE_GAN/nns/aae5/auto_encoder_1639217753.708108.pth"
+#  perceptionModlePath: "tasks/myutils/AE_GAN/nns/aae5/auto_encoder_1639217753.708108.pth"
+  perceptionModlePath: "/home/v-wewei/code/IsaacGym_Preview3/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/aae5/auto_encoder_1639217753.708108.pth"
   # /home/v-wewei/code/IsaacGym_Preview3/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/aae5/auto_encoder_1639217753.708108.pth
+#  discriminatorPath: "tasks/myutils/AE_GAN/nns/aae5/discriminator_1639217753.714437.pth"
+  discriminatorPath: "/home/v-wewei/code/IsaacGym_Preview3/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/aae5/discriminator_1639217753.714437.pth"
+  # /home/v-wewei/code/IsaacGym_Preview3/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/aae5/discriminator_1639217753.714437.pth
   showRGB: False
   showDepth: False
   showPointCloud: False
+
+  aae:
+    save_seq: 50
+    warmup: -1
+    # <0: no scheduler.step
+    # =0: scheduler.step() begin at the first run
+    # >0: scheduler.step() begin at wamrup-th run
+    optimizer:
+      lr: 0.0005
+      betas0: 0.5
+      betas1: 0.999
+    scheduler:
+      gamma: 0.99
 
   asset:
     assetRoot: "../../assets"

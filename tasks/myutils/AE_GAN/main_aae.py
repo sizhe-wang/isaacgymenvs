@@ -22,12 +22,12 @@ distributed = False
 workers = 12
 epoches = 1
 lr = 5e-4
-device = 'cuda:0'
+device = 'cuda:3'
 adversarial_loss = torch.nn.BCELoss().to(device)
 save_seq = 10
-load = False
-auto_encoder_path = "nns/aae/auto_encoder.pth"
-discriminator_path = "nns/aae/discriminator.pth"
+load = True
+auto_encoder_path = "/home/v-wewei/code/IsaacGym_Preview3/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/aae5/auto_encoder_1639217753.708108.pth"
+discriminator_path = "/home/v-wewei/code/IsaacGym_Preview3/IsaacGymEnvs/isaacgymenvs/tasks/myutils/AE_GAN/nns/aae5/discriminator_1639217753.714437.pth"
 
 
 def adjust_learning_rate(optimizer, epoch, learning_rate):
@@ -141,18 +141,20 @@ if __name__ == '__main__':
 
     auto_encoder = aae.AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32]).to(device)
     if load:
-        auto_encoder.load_state_dict(torch.load(auto_encoder_path))
+        auto_encoder.load_state_dict(torch.load(auto_encoder_path, map_location=torch.device(device)))
     discriminator = aae.Discriminator().to(device)
     if load:
-        discriminator.load_state_dict(torch.load(discriminator_path))
+        discriminator.load_state_dict(torch.load(discriminator_path, map_location=torch.device(device)))
     train_dataset = Custom_train_dataset(root="../image_tensors/",
                                          split="train",
                                          transform=None,
+                                         device='cpu',
                                          download=False)
     val_dataset = Custom_val_dataset(root="../image_tensors/",
-                                         split="train",
-                                         transform=None,
-                                         download=False)
+                                     split="train",
+                                     transform=None,
+                                     device='cpu',
+                                     download=False)
     optimizer_G = torch.optim.Adam(auto_encoder.parameters(), lr=lr, betas=(0.5, 0.999))
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
 

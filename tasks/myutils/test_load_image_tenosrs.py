@@ -2,7 +2,7 @@ import torch
 
 
 if __name__ == "__main__":
-    image_tensors = torch.load("image_tensors/image_tensors.pt")
+    image_tensors = torch.load("image_tensors/image_tensors.pt", map_location=torch.device('cuda:3'))
     # normalization
     # image_tensors = (image_tensors - torch.max(image_tensors)) / (torch.min(image_tensors) - torch.max(image_tensors))
     # image_tensors = image_tensors.view(-1, 1, 64, 64)
