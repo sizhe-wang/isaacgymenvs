@@ -59,7 +59,8 @@ OmegaConf.register_new_resolver('resolve_default', lambda default, arg: default 
 
 @hydra.main(config_name="config", config_path="./cfg")
 def launch_rlg_hydra(cfg: DictConfig):
-
+    # cfg.train.params.config.device = 'cuda:1'
+    # cfg.task.rl_device = 'cuda:1'
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:
         cfg.checkpoint = to_absolute_path(cfg.checkpoint)
@@ -94,6 +95,11 @@ def launch_rlg_hydra(cfg: DictConfig):
     })
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)
+
+    # print(cfg.train)
+    # print('----------------------------------')
+    # print(cfg.task)
+    # exit()
 
     # convert CLI arguments into dictionory
     # create runner and set the settings

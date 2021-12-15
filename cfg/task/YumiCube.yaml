@@ -201,3 +201,8 @@ sim:
 
 task:
   randomize: False
+
+
+#rl_device: 'cuda:1'
+rl_device: ${..rl_device}
+

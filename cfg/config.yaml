@@ -25,6 +25,7 @@ sim_device: 'cuda:0'
 # device to run RL
 rl_device: 'cuda:0'
 graphics_device_id: 0
+ppo_device: 'cuda:0'
 
 ## PhysX arguments
 num_threads: 4 # Number of worker threads per scene used by PhysX - for CPU PhysX only.

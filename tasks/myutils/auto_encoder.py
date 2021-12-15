@@ -17,11 +17,13 @@ class AAE(torch.nn.Module):
                                         latent_dim=latent_dim,
                                         hidden_dims=hidden_dims)
         self.discriminator = Discriminator()
+
         if load:
             self.auto_encoder.load_state_dict(torch.load(ae_path, map_location='cpu'))
-            self.auto_encoder.to(self.device)
             self.discriminator.load_state_dict(torch.load(dis_path, map_location='cpu'))
-            self.discriminator.to(self.device)
+
+        self.auto_encoder.to(self.device)
+        self.discriminator.to(self.device)
         self.adversarial_loss = torch.nn.BCELoss().to(self.device)
         if not os.path.exists("summaries"):
             os.mkdir("summaries")

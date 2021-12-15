@@ -54,6 +54,8 @@ def control_ik(dpose, device, j_eef, num_envs, damping=0.05):
 
 class YumiCube(VecTask):
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
+        # sim_device = 'cuda:1'
+        # graphics_device_id = 1
         # 一些基础配置
         self.cfg = cfg
         self.headless = headless
@@ -148,6 +150,7 @@ class YumiCube(VecTask):
 
         # /add ===================================================================
         super().__init__(config=self.cfg, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
+        # super().__init__(config=self.cfg, sim_device='cuda:1', graphics_device_id=1, headless=headless)
 
         # get gym GPU state tensors
         actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
@@ -205,12 +208,16 @@ class YumiCube(VecTask):
                     self.net.eval()
 
             elif self.modelMode == 2:   # 2: auto encoder
+
                 if self.train_perception:
                     # self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device)
-                    self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device='cpu')
+
                     if self.load_perception:
-                        self.net.auto_encoder.load_state_dict(torch.load(self.perception_modle_path, map_location='cpu'))
-                        self.net.discriminator.load_state_dict(torch.load(self.discriminator_path, map_location='cpu'))
+                        self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device,
+                                       load=True, ae_path=self.perception_modle_path, dis_path=self.discriminator_path)
+                    else:
+                        self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device, load=False)
+
                     self.net.create_optimizer(lr=self.aae_optimizer_lr, betas=(self.aae_optimizer_betas0, self.aae_optimizer_betas1))
                     self.net.create_scheduler(gamma=self.aae_scheduler_gamma)
                     self.net.auto_encoder.to(self.device)
@@ -575,6 +582,9 @@ class YumiCube(VecTask):
 
                 # H * W * channel
                 image_tensor = gymtorch.wrap_tensor(_image_tensor)  # image_array is depth map, not distance map
+                # print(self.device)
+                # print(image_tensor.device)
+                # image_tensor = image_tensor#.cpu().to(self.device)
 
                 if self.showRGB and j == 0:
                     _show_image_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[j], self.cameras[j], gymapi.IMAGE_COLOR)
@@ -817,6 +827,7 @@ class YumiCube(VecTask):
 
     def pre_physics_step(self, actions):
         # print("action", actions[0])
+        # actions = actions.to(self.device)
         self.control_output = actions
         # actions : [delta_x, delta_y, delta_z, delta_rz, gripper_command]
 

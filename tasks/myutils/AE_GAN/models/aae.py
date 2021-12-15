@@ -4,10 +4,11 @@ from torch.nn import functional as F
 from typing import List, Callable, Union, Any, TypeVar, Tuple
 import copy
 
+
 Tensor = TypeVar('torch.tensor')
+
+
 class AutoEncoder(torch.nn.Module):
-
-
     def __init__(self,
                  in_channels: int,
                  latent_dim: int,

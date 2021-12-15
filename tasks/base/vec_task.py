@@ -82,6 +82,8 @@ class Env(ABC):
         if enable_camera_sensors == False and self.headless == True:
             self.graphics_device_id = -1
 
+        # self.graphics_device_id = 1
+
         self.num_environments = config["env"]["numEnvs"]
         self.num_agents = config["env"].get("numAgents", 1)  # used for multi-agent environments
         self.num_observations = config["env"]["numObservations"]
