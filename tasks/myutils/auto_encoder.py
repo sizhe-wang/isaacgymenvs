@@ -10,13 +10,18 @@ import time
 
 
 class AAE(torch.nn.Module):
-    def __init__(self, in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device='cuda:0'):
+    def __init__(self, in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device='cuda:0', load=False, ae_path=None, dis_path=None):
         super().__init__()
         self.device = device
         self.auto_encoder = AutoEncoder(in_channels=in_channels,
                                         latent_dim=latent_dim,
-                                        hidden_dims=hidden_dims).to(self.device)
-        self.discriminator = Discriminator().to(self.device)
+                                        hidden_dims=hidden_dims)
+        self.discriminator = Discriminator()
+        if load:
+            self.auto_encoder.load_state_dict(torch.load(ae_path, map_location='cpu'))
+            self.auto_encoder.to(self.device)
+            self.discriminator.load_state_dict(torch.load(dis_path, map_location='cpu'))
+            self.discriminator.to(self.device)
         self.adversarial_loss = torch.nn.BCELoss().to(self.device)
         if not os.path.exists("summaries"):
             os.mkdir("summaries")

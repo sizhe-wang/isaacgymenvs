@@ -55,6 +55,7 @@ def control_ik(dpose, device, j_eef, num_envs, damping=0.05):
 class YumiCube(VecTask):
 
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
+
         # 一些基础配置
         self.cfg = cfg
         self.headless = headless
@@ -195,8 +196,9 @@ class YumiCube(VecTask):
                     self.net.eval()
             elif self.modelMode == 2:   # 2: auto encoder
                 self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32],
-                                       img_height=self.camera_height, img_width=self.camera_width).to(self.device)
-                self.net.load_state_dict(torch.load(self.perception_modle_path))
+                                       img_height=self.camera_height, img_width=self.camera_width)
+                self.net.load_state_dict(torch.load(self.perception_modle_path, map_location='cpu'))
+                self.net.to(self.device)
                 self.net.eval()
             if self.image_mode == 2:
                 self.preprocess = transforms.Compose([  # [1]

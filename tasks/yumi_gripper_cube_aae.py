@@ -206,18 +206,22 @@ class YumiCube(VecTask):
 
             elif self.modelMode == 2:   # 2: auto encoder
                 if self.train_perception:
-                    self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device)
+                    # self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device)
+                    self.net = AAE(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device='cpu')
                     if self.load_perception:
-                        self.net.auto_encoder.load_state_dict(torch.load(self.perception_modle_path))
-                        self.net.discriminator.load_state_dict(torch.load(self.discriminator_path))
+                        self.net.auto_encoder.load_state_dict(torch.load(self.perception_modle_path, map_location='cpu'))
+                        self.net.discriminator.load_state_dict(torch.load(self.discriminator_path, map_location='cpu'))
                     self.net.create_optimizer(lr=self.aae_optimizer_lr, betas=(self.aae_optimizer_betas0, self.aae_optimizer_betas1))
                     self.net.create_scheduler(gamma=self.aae_scheduler_gamma)
+                    self.net.auto_encoder.to(self.device)
+                    self.net.discriminator.to(self.device)
                     self.net.auto_encoder.train()
                     self.net.discriminator.train()
                 else:
-                    self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device=self.device)
+                    self.net = AutoEncoder(in_channels=1, latent_dim=100, hidden_dims=[32, 32, 32], device='cpu')
                     if self.load_perception:
-                        self.net.load_state_dict(torch.load(self.perception_modle_path))
+                        self.net.load_state_dict(torch.load(self.perception_modle_path, map_location='cpu'))
+                    self.net.to(self.device)
                     self.net.eval()
             if self.image_mode == 2:
                 self.preprocess = transforms.Compose([  # [1]
