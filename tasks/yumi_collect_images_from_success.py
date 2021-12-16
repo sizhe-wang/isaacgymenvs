@@ -163,7 +163,7 @@ class YumiCollect(VecTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
-        self.yumi_default_dof_pos = to_torch([0, 0.10, 0., 0, 0.025, 0.025], device=self.device)
+        self.yumi_default_dof_pos = to_torch([0, 0.10, -0.11, 0, 0.025, 0.025], device=self.device)
 
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         # 2: 0:position, 1:velocity
@@ -462,9 +462,9 @@ class YumiCollect(VecTask):
         # 任务越复杂越需要更大的bonus和max episode length，比如cube在中心的时候，bonus是现在的1/2，max episode length也是1/2，
         # 但cube不在中心，就得加大bonus和max episode length，否则gripper不会lift
         # 在max episode length变大的时候bonus要相应变大，否则bonus不明显
-        # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
-        #                        (5 * dist_reward).view(self.num_envs, 1),
-        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
+                               (5 * dist_reward).view(self.num_envs, 1),
+                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.0001) & around,
         #                        (10 * dist_reward).view(self.num_envs, 1),
         #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
@@ -481,13 +481,13 @@ class YumiCollect(VecTask):
         #                        (30 * dist_reward).view(self.num_envs, 1),
         #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01) & around,
-                               torch.Tensor([[20.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[10.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03),
                                torch.Tensor([[30.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.05),
-                               torch.Tensor([[40.]] * self.num_envs).to(self.device),
+                               torch.Tensor([[50.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
 
 
