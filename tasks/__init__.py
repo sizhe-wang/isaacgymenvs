@@ -43,6 +43,7 @@ from isaacgymenvs.tasks.trifinger import Trifinger
 # from isaacgymenvs.tasks.yumi_gripper_cube import YumiCube
 # from isaacgymenvs.tasks.yumi_gripper_cube_load_pretrain import YumiCube     # aae only inference
 from isaacgymenvs.tasks.yumi_gripper_cube_aae import YumiCube     # aae continue training
+from isaacgymenvs.tasks.yumi_collect_images_from_success import YumiCollect
 # from isaacgymenvs.tasks.hand import Hand
 
 # Mappings from strings to environments
@@ -60,5 +61,6 @@ isaacgym_task_map = {
     "ShadowHand": ShadowHand,
     "Trifinger": Trifinger,
     "YumiCube": YumiCube,
+    "YumiCollect": YumiCollect,
     # "Hand": Hand,
 }
