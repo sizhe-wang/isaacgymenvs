@@ -99,6 +99,11 @@ class YumiCollect(VecTask):
         self.cfg["env"]["numObservations"] = self._num_obs
         self.cfg["env"]["numActions"] = self._num_acts
         # add ===================================================================
+        # image collector
+        self.step_counter = 0
+        self.image_tensors = []
+        self.num_save = 55000
+
         # table
         self.table_dims = gymapi.Vec3(0.7, 0.7, 0.1)
         # 关于相机
