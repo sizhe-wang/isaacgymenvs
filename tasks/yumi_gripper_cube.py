@@ -437,17 +437,18 @@ class YumiCube(VecTask):
         # # print("angle reward", angle_reward[0])
         # ============================================================
         # bool for around enough
-        around = (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0) & (abs(gripper_height - object_height - diff_height) - 0.02 < 0)
+        # around = (abs(gripper_x - object_x) - 0.01 < 0) & (abs(gripper_y - object_y) - 0.01 < 0) & (abs(gripper_height - object_height - diff_height) - 0.02 < 0)
 
         # rewards for lift height
-        rewards += ((object_height - self.table_dims.z - self.cube_size / 2.) * self.lift_reward_scale * around).view(self.num_envs)
+        # rewards += ((object_height - self.table_dims.z - self.cube_size / 2.) * self.lift_reward_scale * around).view(self.num_envs)
+        rewards += ((object_height - self.table_dims.z - self.cube_size / 2.) * self.lift_reward_scale).view(self.num_envs)
         # rewards += ((gripper_height - self.table_dims.z - self.cube_size / 2. - diff_height) * self.lift_reward_scale * 0.1).view(self.num_envs)
         print("lift height", (object_height - self.table_dims.z - self.cube_size / 2.)[0])
 
-        success_ = torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
-                               torch.Tensor([[1.]] * self.num_envs).to(self.device),
-                               torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
+        # success_ = torch.where((object_height > (self.table_dims.z + self.cube_size / 2.)) & around,
+        #                        torch.Tensor([[1.]] * self.num_envs).to(self.device),
+        #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
+        # self.success_ids = success_.nonzero(as_tuple=False).squeeze(-1).tolist()
         # bonus for lift height.  bonus需要很大，否则train不出来(只有现在的1/20的时候就不行) max episode length需要大一点(300)
         # 任务越复杂越需要更大的bonus和max episode length，比如cube在中心的时候，bonus是现在的1/2，max episode length也是1/2，
         # 但cube不在中心，就得加大bonus和max episode length，否则gripper不会lift
@@ -470,7 +471,7 @@ class YumiCube(VecTask):
         # rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.0008) & around,
         #                        (30 * dist_reward).view(self.num_envs, 1),
         #                        torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
-        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01) & around,
+        rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.01),
                                torch.Tensor([[20.]] * self.num_envs).to(self.device),
                                torch.Tensor([[0.]] * self.num_envs).to(self.device)).view(self.num_envs)
         rewards += torch.where((object_height > (self.table_dims.z + self.cube_size / 2.) + 0.03),
