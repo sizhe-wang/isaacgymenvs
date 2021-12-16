@@ -113,6 +113,8 @@ class YumiCollect(VecTask):
         self.camera_same = self.cfg["env"]["camera"]["same"]
         self.camera_width = self.cfg["env"]["camera"]["width"]
         self.camera_height = self.cfg["env"]["camera"]["height"]
+        self.camera_horizontal_fov = self.cfg["env"]["camera"]["horizontal_fov"]
+        self.camera_vertical_fov = self.camera_height / self.camera_width * self.camera_horizontal_fov
         self.camera_location = gymapi.Vec3(0.35, 0.3, 0.45)
         self.camera_lookat = gymapi.Vec3(0.35, 0., self.table_dims.z)
 
@@ -338,8 +340,9 @@ class YumiCollect(VecTask):
             # camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat,
             #                                            self.camera_width, self.camera_height)
 
-            camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat, self.camera_width, self.camera_height)
-
+            # camera_actor = create_assets.create_camera(self.gym, env_ptr, self.camera_location, self.camera_lookat, self.camera_width, self.camera_height)
+            camera_actor = create_assets.create_camera_attach(self.gym, env_ptr, self.camera_width, self.camera_height,
+                                                              hand_handle, self.camera_horizontal_fov)
             self.gym.end_aggregate(env_ptr)
             self.envs.append(env_ptr)
             self.yumis.append(yumi_actor)
@@ -575,9 +578,9 @@ class YumiCollect(VecTask):
         # save if num is enough --------------------------
         if self.step_counter > (self.num_save // self.num_envs + 1 + success_step):
             store_image_tensors = self.image_tensors = torch.stack(self.image_tensors)
-            if not os.path.exists("myutils/image_tensors"):
-                os.mkdir("myutils/image_tensors")
-            torch.save(store_image_tensors.cpu(), "myutils/image_tensors/image_tensors_from_success_cpu.pt")
+            if not os.path.exists("tasks/myutils/image_tensors"):
+                os.mkdir("tasks/myutils/image_tensors")
+            torch.save(store_image_tensors.cpu(), "tasks/myutils/image_tensors/image_tensors_from_success_cpu.pt")
             print("save success !")
             print(store_image_tensors.shape)
         # save if num is enough --------------------------

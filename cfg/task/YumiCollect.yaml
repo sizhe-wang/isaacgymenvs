@@ -44,8 +44,9 @@ env:
   camera:
     same: True  # 相机在所有环境中的位姿是否相同
     # 分辨率
-    width: 256
-    height: 256
+    width: 64
+    height: 64
+    horizontal_fov: 65.0
 
   # set to True if you use camera sensors in the environment
   enableCameraSensors: True  # TODO:important to set "True" if use camreas!!
