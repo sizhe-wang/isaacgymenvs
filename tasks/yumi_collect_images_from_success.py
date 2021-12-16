@@ -52,7 +52,7 @@ def control_ik(dpose, device, j_eef, num_envs, damping=0.05):
     return u
 
 
-class YumiCube(VecTask):
+class YumiCollect(VecTask):
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
         # sim_device = 'cuda:1'
         # graphics_device_id = 1
@@ -1041,7 +1041,7 @@ if __name__ == "__main__":
             print(parsed_yaml)
         except yaml.YAMLError as exc:
             print(exc)
-    yumi = YumiCube(parsed_yaml, 'cuda:0', 0, headless=True)
+    yumi = YumiCollect(parsed_yaml, 'cuda:0', 0, headless=True)
     print("created YumiCube")
     # yumi.gym.prepare_sim(yumi.sim)
     print("prepared sim")
